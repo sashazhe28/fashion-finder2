@@ -1,0 +1,8 @@
+{
+  "name": "FashionFinder",
+  "description": "AI-powered fashion search tool. Identify clothing items from photos and find them on marketplaces like Wildberries, Ozon, and Lamoda.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": []
+}
