@@ -15,6 +15,11 @@ async function startServer() {
 
   app.use(express.json({ limit: '10mb' }));
 
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+  });
+
   // Database setup
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -22,18 +27,20 @@ async function startServer() {
   });
 
   // Initialize DB table
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS search_history (
-        id SERIAL PRIMARY KEY,
-        images_base64 TEXT,
-        results JSONB,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log("Database initialized");
-  } catch (err) {
-    console.error("Database initialization failed", err);
+  if (process.env.DATABASE_URL) {
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS search_history (
+          id SERIAL PRIMARY KEY,
+          images_base64 TEXT,
+          results JSONB,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      console.log("Database initialized");
+    } catch (err) {
+      console.error("Database initialization failed", err);
+    }
   }
 
   // Gemini setup
@@ -61,14 +68,21 @@ async function startServer() {
 
   const ANALYSIS_SYSTEM_PROMPT = "You are a visual search expert for fashion marketplaces. Analyze the image and identify up to 3 distinct items. For each item, focus **only on visible attributes (Type of item, Main Color, and Key Style/Fit)**. Generate the single, shortest, and most effective Russian search query that accurately reflects the visual elements. Respond with a JSON array.";
 
-  // API Routes
-  app.post("/api/analyze", async (req, res) => {
+  const apiRouter = express.Router();
+
+  apiRouter.get("/health", (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
+  });
+
+  apiRouter.post("/analyze", async (req, res) => {
+    console.log("POST /api/analyze hit");
     const { image } = req.body;
     if (!image) {
       return res.status(400).json({ error: "Image is required" });
     }
 
     try {
+      console.log("Starting Gemini analysis...");
       const response = await ai.models.generateContent({
         model: MODEL_NAME,
         contents: [
@@ -93,17 +107,19 @@ async function startServer() {
       });
 
       const analysisRaw = response.text;
+      console.log("Gemini response received");
       if (!analysisRaw) {
         throw new Error("AI returned an empty response. This might be due to safety filters or an invalid image.");
       }
 
       const analysis = JSON.parse(analysisRaw);
       
-      // Save to history (non-blocking)
-      pool.query(
-        "INSERT INTO search_history (results) VALUES ($1)",
-        [JSON.stringify(analysis)]
-      ).catch(err => console.error("Failed to save history:", err));
+      if (process.env.DATABASE_URL) {
+        pool.query(
+          "INSERT INTO search_history (results) VALUES ($1)",
+          [JSON.stringify(analysis)]
+        ).catch(err => console.error("Failed to save history:", err));
+      }
 
       res.json(analysis);
     } catch (error: any) {
@@ -113,8 +129,11 @@ async function startServer() {
     }
   });
 
-  app.get("/api/history", async (req, res) => {
+  apiRouter.get("/history", async (req, res) => {
     try {
+      if (!process.env.DATABASE_URL) {
+        return res.json([]);
+      }
       const { rows } = await pool.query("SELECT * FROM search_history ORDER BY created_at DESC LIMIT 10");
       res.json(rows);
     } catch (error: any) {
@@ -122,13 +141,31 @@ async function startServer() {
     }
   });
 
+  app.use("/api", apiRouter);
+
+  // Catch-all for /api that didn't match
+  app.use("/api/*", (req, res) => {
+    console.log(`404 API Route: ${req.method} ${req.originalUrl}`);
+    res.status(404).json({ error: `API route ${req.method} ${req.originalUrl} not found` });
+  });
+
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server listening on port ${PORT}`);
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
+    try {
+      console.log("Initializing Vite...");
+      const vite = await createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa",
+      });
+      app.use(vite.middlewares);
+      console.log("Vite initialized");
+    } catch (err) {
+      console.error("Vite initialization failed", err);
+    }
   } else {
     const distPath = path.join(process.cwd(), "dist");
     app.use(express.static(distPath));
@@ -136,10 +173,6 @@ async function startServer() {
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
 }
 
 startServer();

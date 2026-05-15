@@ -114,7 +114,8 @@ export default function App() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        let errorMessage = 'Analysis failed';
+        console.error('API Error Response:', errorText);
+        let errorMessage = `Analysis failed (${response.status})`;
         try {
           const errorJson = JSON.parse(errorText);
           errorMessage = errorJson.error || errorMessage;

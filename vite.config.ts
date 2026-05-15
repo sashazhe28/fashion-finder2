@@ -7,6 +7,10 @@ export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   return {
     plugins: [react(), tailwindcss()],
+    define: {
+      'import.meta.env.VITE_PUBLIC_POSTHOG_TOKEN': JSON.stringify(env.VITE_PUBLIC_POSTHOG_TOKEN),
+      'import.meta.env.VITE_PUBLIC_POSTHOG_HOST': JSON.stringify(env.VITE_PUBLIC_POSTHOG_HOST),
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
