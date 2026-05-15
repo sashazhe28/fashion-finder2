@@ -112,7 +112,17 @@ export default function App() {
         body: JSON.stringify({ image: base64Image })
       });
 
-      if (!response.ok) throw new Error('Analysis failed');
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorMessage = 'Analysis failed';
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        throw new Error(errorMessage);
+      }
       
       const itemAnalysis = await response.json();
       

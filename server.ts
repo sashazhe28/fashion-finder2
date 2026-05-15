@@ -92,18 +92,24 @@ async function startServer() {
         }
       });
 
-      const analysis = JSON.parse(response.text || "[]");
+      const analysisRaw = response.text;
+      if (!analysisRaw) {
+        throw new Error("AI returned an empty response. This might be due to safety filters or an invalid image.");
+      }
+
+      const analysis = JSON.parse(analysisRaw);
       
-      // Save to history (optional: we can save the image too, but it's large)
-      await pool.query(
+      // Save to history (non-blocking)
+      pool.query(
         "INSERT INTO search_history (results) VALUES ($1)",
         [JSON.stringify(analysis)]
-      );
+      ).catch(err => console.error("Failed to save history:", err));
 
       res.json(analysis);
     } catch (error: any) {
-      console.error("Gemini Error:", error);
-      res.status(500).json({ error: error.message });
+      console.error("Detailed Gemini Error:", error);
+      const message = error.response?.data?.error?.message || error.message || "An unknown error occurred during analysis";
+      res.status(500).json({ error: message });
     }
   });
 
