@@ -1,7 +1,15 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2 } from 'lucide-react';
+import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2, LogIn } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePostHog } from '@posthog/react';
+import { 
+  SignedIn, 
+  SignedOut, 
+  SignInButton, 
+  SignUpButton, 
+  UserButton, 
+  useUser 
+} from '@clerk/clerk-react';
 import { analyzeFashionImage } from './services/geminiService';
 
 // --- TS Types ---
@@ -35,33 +43,16 @@ const generateSearchUrls = (query: string): MarketplaceLink[] => {
 
 export default function App() {
   const posthog = usePostHog();
+  const { user, isSignedIn } = useUser();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [results, setResults] = useState<ItemResult[] | null>(null);
 
-  // Telegram Mini App State
-  const [tgUser, setTgUser] = useState<TelegramUser | null>(null);
   const [isProUser, setIsProUser] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
 
   useEffect(() => {
-    // In a real Telegram Mini App 'Telegram' is global.
-    const tg = (window as any).Telegram?.WebApp;
-    if (tg) {
-      const userData = tg.initDataUnsafe?.user;
-      if (userData) {
-        setTgUser({
-          id: userData.id,
-          name: userData.username || userData.first_name || 'Пользователь'
-        });
-      }
-      tg.ready();
-      tg.expand();
-    } else {
-      // Mock for dev
-      setTgUser({ id: 'dev_user', name: 'Dev User' });
-    }
     setIsAppReady(true);
   }, []);
 
@@ -153,20 +144,37 @@ export default function App() {
         </div>
         
         <div className="flex items-center space-x-3 md:space-x-6 mb-1">
-          <div className="hidden sm:flex flex-col items-end">
-            <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 tracking-widest">Session</span>
-            <span className="font-sans text-sm font-semibold">{tgUser?.name || 'Guest'}</span>
-          </div>
-          <div className="hidden sm:block h-10 w-[1px] bg-black/10"></div>
-          <button 
-            onClick={handleProSubscription}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-full border border-black/10 transition-all ${isProUser ? 'bg-black text-white' : 'bg-transparent text-black hover:bg-black/5'}`}
-          >
-            <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">
-              {isProUser ? 'Pro Active' : 'Upgrade'}
-            </span>
-            <Star className={`w-3 h-3 ${isProUser ? 'fill-yellow-400 text-yellow-400' : 'text-black'}`} />
-          </button>
+          <SignedIn>
+            <div className="hidden sm:flex flex-col items-end">
+              <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 tracking-widest">Account</span>
+              <span className="font-sans text-sm font-semibold">{user?.fullName || user?.username || 'User'}</span>
+            </div>
+            <div className="hidden sm:block h-10 w-[1px] bg-black/10"></div>
+            <UserButton afterSignOutUrl="/" />
+            <button 
+              onClick={handleProSubscription}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-full border border-black/10 transition-all ${isProUser ? 'bg-black text-white' : 'bg-transparent text-black hover:bg-black/5'}`}
+            >
+              <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">
+                {isProUser ? 'Pro Active' : 'Upgrade'}
+              </span>
+              <Star className={`w-3 h-3 ${isProUser ? 'fill-yellow-400 text-yellow-400' : 'text-black'}`} />
+            </button>
+          </SignedIn>
+          
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button className="flex items-center space-x-2 px-4 py-2 rounded-full border border-black bg-black text-white hover:bg-neutral-800 transition-all">
+                <LogIn className="w-3 h-3" />
+                <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Sign In</span>
+              </button>
+            </SignInButton>
+            <SignUpButton mode="modal">
+              <button className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-full border border-black text-black hover:bg-black/5 transition-all">
+                <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Sign Up</span>
+              </button>
+            </SignUpButton>
+          </SignedOut>
         </div>
       </nav>
 
