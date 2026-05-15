@@ -2,6 +2,7 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePostHog } from '@posthog/react';
+import { analyzeFashionImage } from './services/geminiService';
 
 // --- TS Types ---
 interface MarketplaceLink {
@@ -106,25 +107,7 @@ export default function App() {
     setError(null);
 
     try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image: base64Image })
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorMessage = 'Analysis failed';
-        try {
-          const errorJson = JSON.parse(errorText);
-          errorMessage = errorJson.error || errorMessage;
-        } catch {
-          errorMessage = errorText || errorMessage;
-        }
-        throw new Error(errorMessage);
-      }
-      
-      const itemAnalysis = await response.json();
+      const itemAnalysis = await analyzeFashionImage(base64Image);
       
       const enrichedResults = itemAnalysis.map((item: any) => ({
         ...item,
