@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2, LogIn } from 'lucide-react';
+import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2, LogIn, MapPin, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePostHog } from '@posthog/react';
 import { 
@@ -31,14 +31,40 @@ interface TelegramUser {
 }
 
 // --- UTILS ---
-const generateSearchUrls = (query: string): MarketplaceLink[] => {
+const REGIONS = {
+  'Russia': [
+    { name: 'Wildberries', baseUrl: 'https://www.wildberries.ru/catalog/0/search.aspx?search=', color: 'bg-[#9c27b0]' },
+    { name: 'Ozon', baseUrl: 'https://www.ozon.ru/search/?text=', color: 'bg-[#005bff]' },
+    { name: 'Lamoda', baseUrl: 'https://www.lamoda.ru/catalogsearch/result/?q=', color: 'bg-[#000000]' },
+    { name: 'AliExpress', baseUrl: 'https://www.aliexpress.com/wholesale?SearchText=', color: 'bg-[#ff4747]' }
+  ],
+  'USA': [
+    { name: 'Amazon', baseUrl: 'https://www.amazon.com/s?k=', color: 'bg-[#FF9900]' },
+    { name: 'eBay', baseUrl: 'https://www.ebay.com/sch/i.html?_nkw=', color: 'bg-[#E53238]' },
+    { name: 'Walmart', baseUrl: 'https://www.walmart.com/search?q=', color: 'bg-[#0071CE]' },
+    { name: 'Etsy', baseUrl: 'https://www.etsy.com/search?q=', color: 'bg-[#F1641E]' }
+  ],
+  'Europe': [
+    { name: 'Zalando', baseUrl: 'https://www.zalando.co.uk/catalog/?q=', color: 'bg-[#FF6900]' },
+    { name: 'ASOS', baseUrl: 'https://www.asos.com/search/?q=', color: 'bg-[#000000]' },
+    { name: 'Amazon EU', baseUrl: 'https://www.amazon.de/s?k=', color: 'bg-[#FF9900]' },
+    { name: 'Farfetch', baseUrl: 'https://www.farfetch.com/shopping/women/search/items.aspx?q=', color: 'bg-[#000000]' }
+  ],
+  'Central Asia': [
+    { name: 'Kaspi', baseUrl: 'https://kaspi.kz/shop/search/?text=', color: 'bg-[#F14635]' },
+    { name: 'Wildberries', baseUrl: 'https://kz.wildberries.ru/catalog/0/search.aspx?search=', color: 'bg-[#9c27b0]' },
+    { name: 'Ozon', baseUrl: 'https://www.ozon.kz/search/?text=', color: 'bg-[#005bff]' },
+    { name: 'AliExpress', baseUrl: 'https://www.aliexpress.com/wholesale?SearchText=', color: 'bg-[#ff4747]' }
+  ]
+};
+
+const generateSearchUrls = (query: string, region: keyof typeof REGIONS): MarketplaceLink[] => {
   const encodedQuery = encodeURIComponent(query.trim());
-  return [
-    { name: 'Wildberries', uri: `https://www.wildberries.ru/catalog/0/search.aspx?search=${encodedQuery}`, color: 'bg-[#9c27b0]' },
-    { name: 'Ozon', uri: `https://www.ozon.ru/search/?text=${encodedQuery}`, color: 'bg-[#005bff]' },
-    { name: 'Lamoda', uri: `https://www.lamoda.ru/catalogsearch/result/?q=${encodedQuery}`, color: 'bg-[#000000]' },
-    { name: 'AliExpress', uri: `https://www.aliexpress.com/wholesale?SearchText=${encodedQuery}`, color: 'bg-[#ff4747]' }
-  ];
+  return REGIONS[region].map(market => ({
+    name: market.name,
+    uri: `${market.baseUrl}${encodedQuery}`,
+    color: market.color
+  }));
 };
 
 export default function App() {
@@ -48,6 +74,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [results, setResults] = useState<ItemResult[] | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<keyof typeof REGIONS>('Russia');
 
   const [isProUser, setIsProUser] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
@@ -102,7 +129,7 @@ export default function App() {
       
       const enrichedResults = itemAnalysis.map((item: any) => ({
         ...item,
-        marketplaceLinks: generateSearchUrls(item.searchQuery)
+        marketplaceLinks: generateSearchUrls(item.searchQuery, selectedRegion)
       }));
 
       posthog?.capture('fashion_analysis_completed', { 
@@ -144,6 +171,21 @@ export default function App() {
         </div>
         
         <div className="flex items-center space-x-3 md:space-x-6 mb-1">
+          {/* Location Selection */}
+          <div className="relative group hidden lg:flex items-center space-x-2 px-4 py-2 bg-white/50 border border-black/5 rounded-full hover:bg-white transition-all cursor-pointer">
+            <MapPin className="w-3 h-3 opacity-60" />
+            <select 
+              value={selectedRegion}
+              onChange={(e) => setSelectedRegion(e.target.value as keyof typeof REGIONS)}
+              className="appearance-none bg-transparent border-none font-sans text-[10px] font-bold uppercase tracking-widest focus:outline-none pr-4 cursor-pointer"
+            >
+              {Object.keys(REGIONS).map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            <ChevronDown className="w-2 h-2 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity" />
+          </div>
+
           <SignedIn>
             <div className="hidden sm:flex flex-col items-end">
               <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 tracking-widest">Account</span>
