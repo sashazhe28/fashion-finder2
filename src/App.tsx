@@ -347,13 +347,13 @@ export default function App() {
           </SignedIn>
           
           <SignedOut>
-            <SignInButton mode="modal">
+            <SignInButton mode="redirect">
               <button className="flex items-center space-x-2 px-4 py-2 rounded-full border border-black bg-black text-white hover:bg-neutral-800 transition-all">
                 <LogIn className="w-3 h-3" />
                 <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Sign In</span>
               </button>
             </SignInButton>
-            <SignUpButton mode="modal">
+            <SignUpButton mode="redirect">
               <button className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-full border border-black text-black hover:bg-black/5 transition-all">
                 <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Sign Up</span>
               </button>
@@ -565,13 +565,15 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6"
+            onClick={() => setShowUpgradeModal(false)}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 cursor-pointer"
           >
             <motion.div
               initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 15 }}
-              className="bg-[#F9F8F6] w-full max-w-lg border border-black/10 p-6 md:p-8 relative rounded-sm shadow-xl flex flex-col gap-6"
+              onClick={(e) => e.stopPropagation()}
+              className="bg-[#F9F8F6] w-full max-w-lg border border-black/10 p-6 md:p-8 relative rounded-sm shadow-xl flex flex-col gap-6 cursor-default"
             >
               <button
                 onClick={() => setShowUpgradeModal(false)}
@@ -677,12 +679,12 @@ export default function App() {
                           </div>
 
                           <div className="flex flex-col gap-2 mt-2">
-                            <SignInButton mode="modal">
+                            <SignInButton mode="redirect">
                               <button className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors">
                                 Войти в аккаунт
                               </button>
                             </SignInButton>
-                            <SignUpButton mode="modal">
+                            <SignUpButton mode="redirect">
                               <button className="w-full py-3 border border-black text-black text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-black/5 transition-colors">
                                 Создать аккаунт
                               </button>
@@ -691,7 +693,7 @@ export default function App() {
                         </div>
                       ) : (
                         <>
-                          <div className="bg-emerald-50 border border-emerald-900/10 p-3.5 flex items-center justify-between text-emerald-950 rounded-sm">
+                          <div className="bg-emerald-50 border border-emerald-950/10 p-3.5 flex items-center justify-between text-emerald-950 rounded-sm">
                             <div className="flex items-center gap-2">
                               <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
                               <span className="font-sans text-[10px] font-semibold uppercase tracking-wider">Шаг 1: Авторизован</span>
@@ -750,7 +752,6 @@ export default function App() {
 
                                   <button
                                     onClick={() => handlePolarCheckout(product.id)}
-                                    data-polar-checkout
                                     className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors mt-2"
                                   >
                                     Checkout via Polar
