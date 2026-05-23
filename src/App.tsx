@@ -90,6 +90,7 @@ export default function App() {
   const [checkingSubscription, setCheckingSubscription] = useState(false);
 
   const POLAR_TOKEN = import.meta.env.VITE_POLAR_ACCESS_TOKEN || "polar_oat_6pvvjyRLLiYzzn6VDpiBjrgHNSVUVVtncYX2A2HddpK";
+  const POLAR_BASE_URL = "https://sandbox-api.polar.sh";
 
   // Check URL params for successful checkout
   useEffect(() => {
@@ -120,7 +121,7 @@ export default function App() {
     if (!POLAR_TOKEN) return;
     setFetchingProducts(true);
     try {
-      const response = await fetch('https://api.polar.sh/v1/products?limit=10', {
+      const response = await fetch(`${POLAR_BASE_URL}/v1/products?limit=10`, {
         headers: {
           'Authorization': `Bearer ${POLAR_TOKEN}`
         }
@@ -145,7 +146,7 @@ export default function App() {
 
     setCheckingSubscription(true);
     try {
-      const response = await fetch(`https://api.polar.sh/v1/subscriptions?active=true&search=${encodeURIComponent(email)}`, {
+      const response = await fetch(`${POLAR_BASE_URL}/v1/subscriptions?active=true&search=${encodeURIComponent(email)}`, {
         headers: {
           'Authorization': `Bearer ${POLAR_TOKEN}`
         }
@@ -185,7 +186,7 @@ export default function App() {
     setLoading(true);
     try {
       const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
-      const response = await fetch('https://api.polar.sh/v1/checkouts/custom', {
+      const response = await fetch(`${POLAR_BASE_URL}/v1/checkouts/custom`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${POLAR_TOKEN}`,
