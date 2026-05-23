@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2, LogIn, MapPin, ChevronDown } from 'lucide-react';
+import { Camera, Search, Loader, Zap, ExternalLink, User, Star, Upload, Trash2, LogIn, MapPin, ChevronDown, Check, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePostHog } from '@posthog/react';
 import { 
@@ -79,24 +79,147 @@ export default function App() {
   const [isProUser, setIsProUser] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
 
+  // Polar states
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [polarProducts, setPolarProducts] = useState<any[]>([]);
+  const [fetchingProducts, setFetchingProducts] = useState(false);
+  const [checkingSubscription, setCheckingSubscription] = useState(false);
+
+  const POLAR_TOKEN = import.meta.env.VITE_POLAR_ACCESS_TOKEN || "polar_oat_6pvvjyRLLiYzzn6VDpiBjrgHNSVUVVtncYX2A2HddpK";
+
+  // Check URL params for successful checkout
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout_status') === 'success') {
+      setIsProUser(true);
+      localStorage.setItem('fashionfinder_pro_status', 'true');
+      const tg = (window as any).Telegram?.WebApp;
+      if (tg) {
+        tg.showAlert('Оплата успешно завершена! Доступ к PRO активирован.');
+      } else {
+        alert('Оплата успешно завершена! Доступ к PRO активирован.');
+      }
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // Hydrate local PRO status cache
+  useEffect(() => {
+    const isPro = localStorage.getItem('fashionfinder_pro_status') === 'true';
+    if (isPro) {
+      setIsProUser(true);
+    }
+  }, []);
+
+  // Fetch products from Polar organization
+  const fetchPolarProducts = useCallback(async () => {
+    if (!POLAR_TOKEN) return;
+    setFetchingProducts(true);
+    try {
+      const response = await fetch('https://api.polar.sh/v1/products?limit=10', {
+        headers: {
+          'Authorization': `Bearer ${POLAR_TOKEN}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.items) {
+          setPolarProducts(data.items);
+        }
+      }
+    } catch (err) {
+      console.error("Error fetching Polar products:", err);
+    } finally {
+      setFetchingProducts(false);
+    }
+  }, [POLAR_TOKEN]);
+
+  // Read active subscription of the signed in Clerk user from Polar.sh
+  const checkPolarSubscription = useCallback(async () => {
+    const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
+    if (!email || !POLAR_TOKEN) return;
+
+    setCheckingSubscription(true);
+    try {
+      const response = await fetch(`https://api.polar.sh/v1/subscriptions?active=true&search=${encodeURIComponent(email)}`, {
+        headers: {
+          'Authorization': `Bearer ${POLAR_TOKEN}`
+        }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+          setIsProUser(true);
+          localStorage.setItem('fashionfinder_pro_status', 'true');
+        }
+      }
+    } catch (err) {
+      console.error("Error checking Polar subscription:", err);
+    } finally {
+      setCheckingSubscription(false);
+    }
+  }, [user, POLAR_TOKEN]);
+
   useEffect(() => {
     setIsAppReady(true);
-  }, []);
+    fetchPolarProducts();
+  }, [fetchPolarProducts]);
+
+  useEffect(() => {
+    if (isSignedIn && user) {
+      checkPolarSubscription();
+    }
+  }, [isSignedIn, user, checkPolarSubscription]);
+
+  // Create customized checkout session via Polar API
+  const handlePolarCheckout = async (productId: string) => {
+    if (!isSignedIn) {
+      alert("Пожалуйста, сначала войдите в аккаунт.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress;
+      const response = await fetch('https://api.polar.sh/v1/checkouts/custom', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${POLAR_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          product_id: productId,
+          success_url: window.location.origin + '?checkout_status=success',
+          customer_email: email
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create custom checkout session');
+      }
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        throw new Error('No checkout URL returned from Polar API');
+      }
+    } catch (err) {
+      console.error("Error initiating Polar checkout:", err);
+      alert("Не удалось запустить процесс оплаты. Пожалуйста, попробуйте еще раз.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleProSubscription = useCallback(() => {
     if (isProUser) {
       const tg = (window as any).Telegram?.WebApp;
       if (tg) tg.showAlert('Вы уже PRO-пользователь!');
+      else alert('Вы уже PRO-пользователь!');
       return;
     }
-    
-    setLoading(true);
-    setTimeout(() => {
-      setIsProUser(true);
-      setLoading(false);
-      const tg = (window as any).Telegram?.WebApp;
-      if (tg) tg.showAlert('PRO-статус активирован!');
-    }, 1500);
+    setShowUpgradeModal(true);
   }, [isProUser]);
 
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -125,7 +248,7 @@ export default function App() {
     setError(null);
 
     try {
-      const itemAnalysis = await analyzeFashionImage(base64Image);
+      const itemAnalysis = await analyzeFashionImage(base64Image, selectedRegion);
       
       const enrichedResults = itemAnalysis.map((item: any) => ({
         ...item,
@@ -387,6 +510,148 @@ export default function App() {
            <span>© 2025 FashionFinder Studio</span>
         </div>
       </footer>
+
+      {/* Polar Premium Upgrade Modal */}
+      <AnimatePresence>
+        {showUpgradeModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="bg-[#F9F8F6] w-full max-w-lg border border-black/10 p-6 md:p-8 relative rounded-sm shadow-xl flex flex-col gap-6"
+            >
+              <button
+                onClick={() => setShowUpgradeModal(false)}
+                className="absolute top-6 right-6 p-1 text-black/40 hover:text-black transition-colors"
+                aria-label="Close modal"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              <div className="flex flex-col">
+                <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 mb-1 tracking-widest">
+                  Unlock Premium Capabilities
+                </span>
+                <h2 className="font-serif text-3xl italic font-normal tracking-tight">
+                  Upgrade to PRO
+                </h2>
+                <p className="font-sans text-xs text-black/60 mt-2">
+                  Take your fashion searches to the next level with global market matches, infinite image queries, and higher precision matching powered by Gemini.
+                </p>
+              </div>
+
+              {/* Plans section */}
+              <div className="flex flex-col gap-4">
+                {fetchingProducts ? (
+                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-black/40">
+                    <Loader className="w-6 h-6 animate-spin" />
+                    <span className="font-sans text-[10px] uppercase tracking-widest font-bold">Retrieving Plans...</span>
+                  </div>
+                ) : polarProducts.length > 0 ? (
+                  polarProducts.map((product) => {
+                    const priceObj = product.prices?.[0];
+                    const hasRecurring = priceObj?.type === 'recurring';
+                    const amount = priceObj ? (priceObj.price_amount / 100).toFixed(2) : "4.99";
+                    const currency = priceObj?.price_currency === 'usd' ? '$' : '€';
+                    const interval = hasRecurring ? ` / ${priceObj.recurring_interval}` : '';
+
+                    return (
+                      <div key={product.id} className="border border-black p-5 flex flex-col gap-4 bg-white hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-sans text-lg font-bold uppercase tracking-tight">{product.name}</h3>
+                            <p className="font-sans text-[11px] opacity-60 mt-1">{product.description || "Полный доступ ко всем функциям FashionFinder PRO."}</p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-mono text-2xl font-bold">{currency}{amount}</span>
+                            <span className="font-sans text-[10px] opacity-40 uppercase block tracking-wider">{interval}</span>
+                          </div>
+                        </div>
+
+                        <ul className="space-y-2 text-xs border-t border-black/5 pt-4">
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-black" />
+                            <span>Unlimited High-Accuracy Visual Matches</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-black" />
+                            <span>Global Marketplace Links (US, EU, RU, Central Asia)</span>
+                          </li>
+                          <li className="flex items-center gap-2">
+                            <Check className="w-3.5 h-3.5 text-black" />
+                            <span>Local Language Searches</span>
+                          </li>
+                        </ul>
+
+                        <button
+                          onClick={() => handlePolarCheckout(product.id)}
+                          data-polar-checkout
+                          className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors mt-2"
+                        >
+                          Checkout via Polar
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  /* Fallback Plan when no active Polar products fetched */
+                  <div className="border border-black p-5 flex flex-col gap-4 bg-white">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-sans text-lg font-bold uppercase tracking-tight">FashionFinder PRO</h3>
+                        <p className="font-sans text-[11px] opacity-60 mt-1">Full access to limitless fashion identification.</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="font-mono text-2xl font-bold">$4.99</span>
+                        <span className="font-sans text-[10px] opacity-40 uppercase block tracking-wider">/ month</span>
+                      </div>
+                    </div>
+
+                    <ul className="space-y-2 text-xs border-t border-black/5 pt-4">
+                      <li className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-black" />
+                        <span>Unlimited High-Accuracy Visual Matches</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-black" />
+                        <span>Global Marketplace Links (US, EU, RU, Central Asia)</span>
+                      </li>
+                      <li className="flex items-center gap-2">
+                        <Check className="w-3.5 h-3.5 text-black" />
+                        <span>Priority Gemini Processing Target</span>
+                      </li>
+                    </ul>
+
+                    <button
+                      onClick={() => {
+                        setIsProUser(true);
+                        localStorage.setItem('fashionfinder_pro_status', 'true');
+                        setShowUpgradeModal(false);
+                        const tg = (window as any).Telegram?.WebApp;
+                        if (tg) tg.showAlert('FashionFinder PRO статус успешно активирован (Sandbox Mode)!');
+                        else alert('FashionFinder PRO статус успешно активирован (Sandbox Mode)!');
+                      }}
+                      className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors mt-2"
+                    >
+                      Activate Trial Access
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-center text-[10px] text-black/40 uppercase tracking-widest">
+                Protected and compiled by Polar.sh
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
