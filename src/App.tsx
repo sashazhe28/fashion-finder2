@@ -280,6 +280,13 @@ export default function App() {
           const nextCount = searchCount + 1;
           setSearchCount(nextCount);
           localStorage.setItem('fashionfinder_search_count', nextCount.toString());
+          
+          if (nextCount >= 2) {
+            // Automatically prompt upgrade modal once 2nd search completes
+            setTimeout(() => {
+              setShowUpgradeModal(true);
+            }, 1000);
+          }
         }
       }
     } catch (e) {
