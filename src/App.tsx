@@ -460,7 +460,9 @@ export default function App() {
                 </span>
                 {searchCount >= 2 && (
                   <p className="font-sans text-[11px] text-red-600 font-semibold mt-1">
-                    Для продолжения войдите в аккаунт и активируйте PRO-доступ.
+                    {isSignedIn 
+                      ? "Активируйте PRO-доступ для продолжения поиска." 
+                      : "Для продолжения войдите в аккаунт и активируйте PRO-доступ."}
                   </p>
                 )}
                 {searchCount > 0 && (
