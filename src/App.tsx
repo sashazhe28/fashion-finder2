@@ -78,6 +78,10 @@ export default function App() {
 
   const [isProUser, setIsProUser] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
+  const [searchCount, setSearchCount] = useState<number>(() => {
+    const cached = localStorage.getItem('fashionfinder_search_count');
+    return cached ? parseInt(cached, 10) : 0;
+  });
 
   // Polar states
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -244,6 +248,12 @@ export default function App() {
   const handleSearch = async () => {
     if (!base64Image) return;
 
+    // Enforce 2 free searches limit for non-PRO users
+    if (searchCount >= 2 && !isProUser) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -263,6 +273,13 @@ export default function App() {
       setResults(enrichedResults);
       if (enrichedResults.length === 0) {
         setError("Предметы не найдены. Попробуйте другое фото.");
+      } else {
+        // Increment search count only for non-PRO users
+        if (!isProUser) {
+          const nextCount = searchCount + 1;
+          setSearchCount(nextCount);
+          localStorage.setItem('fashionfinder_search_count', nextCount.toString());
+        }
       }
     } catch (e) {
       console.error(e);
@@ -425,6 +442,32 @@ export default function App() {
             >
               {loading ? 'Processing...' : 'Identify Objects'}
             </button>
+
+            {!isProUser && (
+              <div className="mt-4 text-center flex flex-col items-center justify-center">
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[#1A1A1A] opacity-60">
+                  {searchCount >= 2 
+                    ? "Лимит исчерпан: 2 из 2 поисков использовано"
+                    : `Использовано бесплатных поисков: ${searchCount} из 2`}
+                </span>
+                {searchCount >= 2 && (
+                  <p className="font-sans text-[11px] text-red-600 font-semibold mt-1">
+                    Для продолжения войдите в аккаунт и активируйте PRO-доступ.
+                  </p>
+                )}
+                {searchCount > 0 && (
+                  <button 
+                    onClick={() => {
+                      setSearchCount(0);
+                      localStorage.removeItem('fashionfinder_search_count');
+                    }}
+                    className="mt-2.5 text-[9px] uppercase tracking-widest text-black/40 hover:text-black underline transition-colors font-mono"
+                  >
+                    [Сбросить лимит для теста]
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -548,29 +591,109 @@ export default function App() {
 
               {/* Plans section */}
               <div className="flex flex-col gap-4">
-                {fetchingProducts ? (
-                  <div className="flex flex-col items-center justify-center py-10 gap-3 text-black/40">
-                    <Loader className="w-6 h-6 animate-spin" />
-                    <span className="font-sans text-[10px] uppercase tracking-widest font-bold">Retrieving Plans...</span>
-                  </div>
-                ) : polarProducts.length > 0 ? (
-                  polarProducts.map((product) => {
-                    const priceObj = product.prices?.[0];
-                    const hasRecurring = priceObj?.type === 'recurring';
-                    const amount = priceObj ? (priceObj.price_amount / 100).toFixed(2) : "4.99";
-                    const currency = priceObj?.price_currency === 'usd' ? '$' : '€';
-                    const interval = hasRecurring ? ` / ${priceObj.recurring_interval}` : '';
+                {!isSignedIn ? (
+                  <div className="border border-black p-6 flex flex-col gap-4 bg-white">
+                    <div className="flex flex-col text-center">
+                      <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-purple-600 mb-1">Шаг 1 из 2</span>
+                      <h3 className="font-serif text-2xl italic">Войдите в аккаунт</h3>
+                      <p className="font-sans text-xs text-black/60 mt-2">
+                        Для привязки и активации PRO-подписки Polar.sh необходимо сначала авторизоваться или создать аккаунт.
+                      </p>
+                    </div>
 
-                    return (
-                      <div key={product.id} className="border border-black p-5 flex flex-col gap-4 bg-white hover:shadow-md transition-shadow">
+                    <div className="flex flex-col gap-2 mt-2">
+                      <SignInButton mode="modal">
+                        <button className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors">
+                          Войти в аккаунт
+                        </button>
+                      </SignInButton>
+                      <SignUpButton mode="modal">
+                        <button className="w-full py-3 border border-black text-black text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-black/5 transition-colors">
+                          Создать аккаунт
+                        </button>
+                      </SignUpButton>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-emerald-50 border border-emerald-900/10 p-3.5 flex items-center justify-between text-emerald-950 rounded-sm">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                        <span className="font-sans text-[10px] font-semibold uppercase tracking-wider">Шаг 1: Авторизован</span>
+                      </div>
+                      <span className="font-sans text-[11px] font-medium opacity-70">
+                        {user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress}
+                      </span>
+                    </div>
+
+                    <div className="mt-2 text-center">
+                      <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                        Шаг 2: Оплатите подписку Polar
+                      </span>
+                    </div>
+
+                    {fetchingProducts ? (
+                      <div className="flex flex-col items-center justify-center py-10 gap-3 text-black/40">
+                        <Loader className="w-6 h-6 animate-spin" />
+                        <span className="font-sans text-[10px] uppercase tracking-widest font-bold">Retrieving Plans...</span>
+                      </div>
+                    ) : polarProducts.length > 0 ? (
+                      polarProducts.map((product) => {
+                        const priceObj = product.prices?.[0];
+                        const hasRecurring = priceObj?.type === 'recurring';
+                        const amount = priceObj ? (priceObj.price_amount / 100).toFixed(2) : "4.99";
+                        const currency = priceObj?.price_currency === 'usd' ? '$' : '€';
+                        const interval = hasRecurring ? ` / ${priceObj.recurring_interval}` : '';
+
+                        return (
+                          <div key={product.id} className="border border-black p-5 flex flex-col gap-4 bg-white hover:shadow-md transition-shadow">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h3 className="font-sans text-lg font-bold uppercase tracking-tight">{product.name}</h3>
+                                <p className="font-sans text-[11px] opacity-60 mt-1">{product.description || "Полный доступ ко всем функциям FashionFinder PRO."}</p>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-mono text-2xl font-bold">{currency}{amount}</span>
+                                <span className="font-sans text-[10px] opacity-40 uppercase block tracking-wider">{interval}</span>
+                              </div>
+                            </div>
+
+                            <ul className="space-y-2 text-xs border-t border-black/5 pt-4">
+                              <li className="flex items-center gap-2">
+                                <Check className="w-3.5 h-3.5 text-black" />
+                                <span>Unlimited High-Accuracy Visual Matches</span>
+                              </li>
+                              <li className="flex items-center gap-2">
+                                <Check className="w-3.5 h-3.5 text-black" />
+                                <span>Global Marketplace Links (US, EU, RU, Central Asia)</span>
+                              </li>
+                              <li className="flex items-center gap-2">
+                                <Check className="w-3.5 h-3.5 text-black" />
+                                <span>Local Language Searches</span>
+                              </li>
+                            </ul>
+
+                            <button
+                              onClick={() => handlePolarCheckout(product.id)}
+                              data-polar-checkout
+                              className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors mt-2"
+                            >
+                              Checkout via Polar
+                            </button>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      /* Fallback Plan when no active Polar products fetched */
+                      <div className="border border-black p-5 flex flex-col gap-4 bg-white">
                         <div className="flex justify-between items-start">
                           <div>
-                            <h3 className="font-sans text-lg font-bold uppercase tracking-tight">{product.name}</h3>
-                            <p className="font-sans text-[11px] opacity-60 mt-1">{product.description || "Полный доступ ко всем функциям FashionFinder PRO."}</p>
+                            <h3 className="font-sans text-lg font-bold uppercase tracking-tight">FashionFinder PRO</h3>
+                            <p className="font-sans text-[11px] opacity-60 mt-1">Full access to limitless fashion identification.</p>
                           </div>
                           <div className="text-right">
-                            <span className="font-mono text-2xl font-bold">{currency}{amount}</span>
-                            <span className="font-sans text-[10px] opacity-40 uppercase block tracking-wider">{interval}</span>
+                            <span className="font-mono text-2xl font-bold">$4.99</span>
+                            <span className="font-sans text-[10px] opacity-40 uppercase block tracking-wider">/ month</span>
                           </div>
                         </div>
 
@@ -585,63 +708,26 @@ export default function App() {
                           </li>
                           <li className="flex items-center gap-2">
                             <Check className="w-3.5 h-3.5 text-black" />
-                            <span>Local Language Searches</span>
+                            <span>Priority Gemini Processing Target</span>
                           </li>
                         </ul>
 
                         <button
-                          onClick={() => handlePolarCheckout(product.id)}
-                          data-polar-checkout
+                          onClick={() => {
+                            setIsProUser(true);
+                            localStorage.setItem('fashionfinder_pro_status', 'true');
+                            setShowUpgradeModal(false);
+                            const tg = (window as any).Telegram?.WebApp;
+                            if (tg) tg.showAlert('FashionFinder PRO статус успешно активирован (Sandbox Mode)!');
+                            else alert('FashionFinder PRO статус успешно активирован (Sandbox Mode)!');
+                          }}
                           className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors mt-2"
                         >
-                          Checkout via Polar
+                          Activate Trial Access
                         </button>
                       </div>
-                    );
-                  })
-                ) : (
-                  /* Fallback Plan when no active Polar products fetched */
-                  <div className="border border-black p-5 flex flex-col gap-4 bg-white">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-sans text-lg font-bold uppercase tracking-tight">FashionFinder PRO</h3>
-                        <p className="font-sans text-[11px] opacity-60 mt-1">Full access to limitless fashion identification.</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-mono text-2xl font-bold">$4.99</span>
-                        <span className="font-sans text-[10px] opacity-40 uppercase block tracking-wider">/ month</span>
-                      </div>
-                    </div>
-
-                    <ul className="space-y-2 text-xs border-t border-black/5 pt-4">
-                      <li className="flex items-center gap-2">
-                        <Check className="w-3.5 h-3.5 text-black" />
-                        <span>Unlimited High-Accuracy Visual Matches</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-3.5 h-3.5 text-black" />
-                        <span>Global Marketplace Links (US, EU, RU, Central Asia)</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check className="w-3.5 h-3.5 text-black" />
-                        <span>Priority Gemini Processing Target</span>
-                      </li>
-                    </ul>
-
-                    <button
-                      onClick={() => {
-                        setIsProUser(true);
-                        localStorage.setItem('fashionfinder_pro_status', 'true');
-                        setShowUpgradeModal(false);
-                        const tg = (window as any).Telegram?.WebApp;
-                        if (tg) tg.showAlert('FashionFinder PRO статус успешно активирован (Sandbox Mode)!');
-                        else alert('FashionFinder PRO статус успешно активирован (Sandbox Mode)!');
-                      }}
-                      className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors mt-2"
-                    >
-                      Activate Trial Access
-                    </button>
-                  </div>
+                    )}
+                  </>
                 )}
               </div>
 
