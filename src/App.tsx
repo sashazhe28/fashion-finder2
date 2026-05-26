@@ -78,8 +78,15 @@ export default function App() {
 
   const [isProUser, setIsProUser] = useState(false);
   const [isAppReady, setIsAppReady] = useState(false);
-  const [searchCount, setSearchCount] = useState<number>(() => {
-    const cached = localStorage.getItem('fashionfinder_search_count');
+  
+  // Track separate free search counts for unregistered and registered users
+  const [unregisteredSearchCount, setUnregisteredSearchCount] = useState<number>(() => {
+    const cached = localStorage.getItem('fashionfinder_unregistered_search_count');
+    return cached ? parseInt(cached, 10) : 0;
+  });
+
+  const [registeredSearchCount, setRegisteredSearchCount] = useState<number>(() => {
+    const cached = localStorage.getItem('fashionfinder_registered_search_count');
     return cached ? parseInt(cached, 10) : 0;
   });
 
@@ -88,6 +95,41 @@ export default function App() {
   const [polarProducts, setPolarProducts] = useState<any[]>([]);
   const [fetchingProducts, setFetchingProducts] = useState(false);
   const [checkingSubscription, setCheckingSubscription] = useState(false);
+
+  // YuMan Paywall Mock states
+  const [yumanMethod, setYumanMethod] = useState<'sbp' | 'card' | 'yoomoney'>('sbp');
+  const [yumanTariff, setYumanTariff] = useState<'single' | 'day' | 'month'>('month');
+  const [yumanLoading, setYumanLoading] = useState(false);
+  const [yumanSuccess, setYumanSuccess] = useState(false);
+  const [yumanCardNumber, setYumanCardNumber] = useState('');
+  const [yumanCardExpiry, setYumanCardExpiry] = useState('');
+  const [yumanCardCvv, setYumanCardCvv] = useState('');
+
+  const handleYumanPayment = () => {
+    setYumanLoading(true);
+    setTimeout(() => {
+      setYumanLoading(false);
+      setYumanSuccess(true);
+      
+      setIsProUser(true);
+      localStorage.setItem('fashionfinder_pro_status', 'true');
+      
+      const priceText = yumanTariff === 'single' ? '49 ₽' : yumanTariff === 'day' ? '149 ₽' : '390 ₽';
+      const termText = yumanTariff === 'single' ? 'Разовый поиск' : yumanTariff === 'day' ? 'PRO-доступ на день' : 'PRO-доступ на месяц';
+      
+      const tg = (window as any).Telegram?.WebApp;
+      if (tg) {
+        tg.showAlert(`Оплата ${priceText} успешно получена через Paywall YuMan! Активирован тариф: ${termText}.`);
+      } else {
+        alert(`Оплата ${priceText} успешно получена через Paywall YuMan! Активирован тариф: ${termText}.`);
+      }
+      
+      setTimeout(() => {
+        setShowUpgradeModal(false);
+        setYumanSuccess(false);
+      }, 1500);
+    }, 2000);
+  };
 
   const POLAR_TOKEN = import.meta.env.VITE_POLAR_ACCESS_TOKEN || "polar_oat_6pvvjyRLLiYzzn6VDpiBjrgHNSVUVVtncYX2A2HddpK";
   const POLAR_BASE_URL = "https://sandbox-api.polar.sh";
@@ -243,10 +285,19 @@ export default function App() {
   const handleSearch = async () => {
     if (!base64Image) return;
 
-    // Enforce 2 free searches limit for non-PRO users
-    if (searchCount >= 2 && !isProUser) {
-      setShowUpgradeModal(true);
-      return;
+    // Enforce 2 free searches for non-PRO users depending on registration status
+    if (!isProUser) {
+      if (!isSignedIn) {
+        if (unregisteredSearchCount >= 2) {
+          setShowUpgradeModal(true);
+          return;
+        }
+      } else {
+        if (registeredSearchCount >= 2) {
+          setShowUpgradeModal(true);
+          return;
+        }
+      }
     }
 
     setLoading(true);
@@ -271,15 +322,28 @@ export default function App() {
       } else {
         // Increment search count only for non-PRO users
         if (!isProUser) {
-          const nextCount = searchCount + 1;
-          setSearchCount(nextCount);
-          localStorage.setItem('fashionfinder_search_count', nextCount.toString());
-          
-          if (nextCount >= 2) {
-            // Automatically prompt upgrade modal once 2nd search completes
-            setTimeout(() => {
-              setShowUpgradeModal(true);
-            }, 1000);
+          if (!isSignedIn) {
+            const nextCount = unregisteredSearchCount + 1;
+            setUnregisteredSearchCount(nextCount);
+            localStorage.setItem('fashionfinder_unregistered_search_count', nextCount.toString());
+            
+            if (nextCount >= 2) {
+              // Automatically prompt upgrade/register modal once 2nd search completes
+              setTimeout(() => {
+                setShowUpgradeModal(true);
+              }, 1000);
+            }
+          } else {
+            const nextCount = registeredSearchCount + 1;
+            setRegisteredSearchCount(nextCount);
+            localStorage.setItem('fashionfinder_registered_search_count', nextCount.toString());
+            
+            if (nextCount >= 2) {
+              // Automatically prompt upgrade/paywall modal once 2nd search completes
+              setTimeout(() => {
+                setShowUpgradeModal(true);
+              }, 1000);
+            }
           }
         }
       }
@@ -448,26 +512,34 @@ export default function App() {
             {!isProUser && (
               <div className="mt-4 text-center flex flex-col items-center justify-center">
                 <span className="font-mono text-[10px] uppercase tracking-wider text-[#1A1A1A] opacity-60">
-                  {searchCount >= 2 
-                    ? "Лимит исчерпан: 2 из 2 поисков использовано"
-                    : `Использовано бесплатных поисков: ${searchCount} из 2`}
+                  {!isSignedIn ? (
+                    unregisteredSearchCount >= 2
+                      ? "Вы израсходовали 2 бесплатные попытки без регистрации"
+                      : `Бесплатные поиски без регистрации: ${unregisteredSearchCount} из 2`
+                  ) : (
+                    registeredSearchCount >= 2
+                      ? "Лимит исчерпан: 2 из 2 поисков после регистрации"
+                      : `Использовано бесплатных поисков: ${registeredSearchCount} из 2`
+                  )}
                 </span>
-                {searchCount >= 2 && (
-                  <p className="font-sans text-[11px] text-red-600 font-semibold mt-1">
-                    {isSignedIn 
-                      ? "Активируйте PRO-доступ для продолжения поиска." 
-                      : "Для продолжения войдите в аккаунт и активируйте PRO-доступ."}
+                {((!isSignedIn && unregisteredSearchCount >= 2) || (isSignedIn && registeredSearchCount >= 2)) && (
+                  <p className="font-sans text-[11px] text-red-600 font-semibold mt-1 animate-pulse">
+                    {!isSignedIn 
+                      ? "Зарегистрируйтесь, чтобы получить еще 2 бесплатные попытки." 
+                      : "Активируйте PRO-доступ для продолжения поиска."}
                   </p>
                 )}
-                {searchCount > 0 && (
+                {(unregisteredSearchCount > 0 || registeredSearchCount > 0) && (
                   <button 
                     onClick={() => {
-                      setSearchCount(0);
-                      localStorage.removeItem('fashionfinder_search_count');
+                      setUnregisteredSearchCount(0);
+                      setRegisteredSearchCount(0);
+                      localStorage.removeItem('fashionfinder_unregistered_search_count');
+                      localStorage.removeItem('fashionfinder_registered_search_count');
                     }}
                     className="mt-2.5 text-[9px] uppercase tracking-widest text-black/40 hover:text-black underline transition-colors font-mono"
                   >
-                    [Сбросить лимит для теста]
+                    [Сбросить лимиты для теста]
                   </button>
                 )}
               </div>
@@ -565,19 +637,22 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setShowUpgradeModal(false)}
-            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 md:p-6 cursor-pointer"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) {
+                setShowUpgradeModal(false);
+              }
+            }}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 md:p-6 cursor-pointer"
           >
             <motion.div
               initial={{ scale: 0.95, y: 15 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.95, y: 15 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-[#F9F8F6] w-full max-w-lg border border-black/10 p-6 md:p-8 relative rounded-sm shadow-xl flex flex-col gap-6 cursor-default"
+              className="bg-[#F9F8F6] w-full max-w-lg border border-[#1A1A1A]/10 p-6 md:p-8 relative rounded-sm shadow-xl flex flex-col gap-6 cursor-default"
             >
               <button
                 onClick={() => setShowUpgradeModal(false)}
-                className="absolute top-6 right-6 p-1 text-black/40 hover:text-black transition-colors"
+                className="absolute top-4 right-4 md:top-6 md:right-6 p-2 text-black/40 hover:text-black hover:bg-black/5 rounded-full transition-colors z-[100] cursor-pointer flex items-center justify-center"
                 aria-label="Close modal"
               >
                 <X className="w-5 h-5" />
@@ -671,13 +746,17 @@ export default function App() {
                       {!isSignedIn ? (
                         <div className="border border-black p-6 flex flex-col gap-4 bg-white">
                           <div className="flex flex-col text-center">
-                            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-purple-600 mb-1">Шаг 1 из 2</span>
+                            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-purple-600 mb-1">
+                              {unregisteredSearchCount >= 2 ? "Лимит исчерпан" : "Шаг 1 из 2"}
+                            </span>
                             <h3 className="font-serif text-2xl italic">Войдите в аккаунт</h3>
                             <p className="font-sans text-xs text-black/60 mt-2">
-                              Для привязки и активации PRO-подписки Polar.sh необходимо сначала авторизоваться или создать аккаунт.
+                              {unregisteredSearchCount >= 2 
+                                ? "Вы израсходовали 2 бесплатные попытки без регистрации. Зарегистрируйтесь прямо сейчас, чтобы мгновенно получить еще 2 бесплатные попытки поиска!" 
+                                : "Для привязки и активации PRO-подписки Polar.sh необходимо сначала авторизоваться или создать аккаунт."}
                             </p>
                           </div>
-
+ 
                           <div className="flex flex-col gap-2 mt-2">
                             <SignInButton mode="redirect">
                               <button className="w-full py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors">
@@ -703,11 +782,212 @@ export default function App() {
                             </span>
                           </div>
 
-                          <div className="mt-2 text-center">
-                            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-neutral-500">
-                              Шаг 2: Оплатите подписку Polar
-                            </span>
-                          </div>
+                          {selectedRegion === 'Russia' ? (
+                            /* --- Custom YUMAN PAYWALL STUB FOR RUSSIA --- */
+                            <div className="flex flex-col gap-4 mt-2 font-sans text-neutral-800">
+                              <div className="text-center">
+                                <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-[#9c27b0]">
+                                  Шаг 2: Безопасная оплата через Paywall YuMan
+                                </span>
+                              </div>
+
+                              {yumanSuccess ? (
+                                <motion.div 
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className="border-2 border-emerald-500 bg-emerald-50/50 p-6 flex flex-col items-center justify-center text-center gap-3 rounded-sm animate-pulse"
+                                >
+                                  <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white">
+                                    <Check className="w-6 h-6 stroke-[3]" />
+                                  </div>
+                                  <h4 className="font-serif text-xl italic text-emerald-950">Оплата успешно проведена!</h4>
+                                  <p className="font-sans text-xs text-emerald-900/70">
+                                    Спасибо! Доступ в FashionFinder PRO активирован. Закрываем окно...
+                                  </p>
+                                </motion.div>
+                              ) : (
+                                <div className="border border-black p-5 flex flex-col gap-5 bg-white shadow-sm font-sans">
+                                  {/* Tariff Selection */}
+                                  <div className="flex flex-col gap-2">
+                                    <label className="font-sans text-[9px] font-bold uppercase tracking-wider text-black/40">Выберите тариф:</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setYumanTariff('single')}
+                                        className={`p-3 border text-left flex flex-col justify-between transition-all rounded-none cursor-pointer ${
+                                          yumanTariff === 'single' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                        }`}
+                                      >
+                                        <span className="font-sans text-[10px] uppercase text-black/80 block">Разовый</span>
+                                        <span className="font-serif text-lg italic text-black font-semibold mt-1">49 ₽</span>
+                                        <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">один поиск</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setYumanTariff('day')}
+                                        className={`p-3 border text-left flex flex-col justify-between relative transition-all rounded-none cursor-pointer ${
+                                          yumanTariff === 'day' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                        }`}
+                                      >
+                                        <span className="absolute -top-1.5 right-1 px-1 bg-[#9c27b0] text-white text-[7px] uppercase font-bold tracking-widest rounded-none">Хит</span>
+                                        <span className="font-sans text-[10px] uppercase text-black/80 block">1 день</span>
+                                        <span className="font-serif text-lg italic text-black font-semibold mt-1">149 ₽</span>
+                                        <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">24 часа PRO</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setYumanTariff('month')}
+                                        className={`p-3 border text-left flex flex-col justify-between transition-all rounded-none cursor-pointer ${
+                                          yumanTariff === 'month' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                        }`}
+                                      >
+                                        <span className="font-sans text-[10px] uppercase text-black/80 block">Месяц</span>
+                                        <span className="font-serif text-lg italic text-black font-semibold mt-1">390 ₽</span>
+                                        <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">выгодно</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Payment Method Selector */}
+                                  <div className="flex flex-col gap-2">
+                                    <label className="font-sans text-[9px] font-bold uppercase tracking-wider text-black/40">Способ оплаты:</label>
+                                    <div className="grid grid-cols-3 gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => setYumanMethod('sbp')}
+                                        className={`p-2 border text-center flex flex-col items-center justify-center gap-1 transition-all rounded-none cursor-pointer ${
+                                          yumanMethod === 'sbp' ? 'border-black bg-black/5 font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                        }`}
+                                      >
+                                        <svg className="w-5 h-5 text-gray-800 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <rect x="3" y="3" width="7" height="7" />
+                                          <rect x="14" y="3" width="7" height="7" />
+                                          <rect x="3" y="14" width="7" height="7" />
+                                          <path d="M14 14h2v2h-2zM19 19h2v2h-2zM14 19h2v2h-2zM19 14h2v2h-2z" />
+                                        </svg>
+                                        <span className="text-[9px] uppercase tracking-tight block mt-1">СБП</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setYumanMethod('card')}
+                                        className={`p-2 border text-center flex flex-col items-center justify-center gap-1 transition-all rounded-none cursor-pointer ${
+                                          yumanMethod === 'card' ? 'border-black bg-black/5 font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                        }`}
+                                      >
+                                        <svg className="w-5 h-5 text-gray-800 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <rect x="2" y="5" width="20" height="14" rx="2" />
+                                          <line x1="2" y1="10" x2="22" y2="10" />
+                                        </svg>
+                                        <span className="text-[9px] uppercase tracking-tight block mt-1">Карта РФ</span>
+                                      </button>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setYumanMethod('yoomoney')}
+                                        className={`p-2 border text-center flex flex-col items-center justify-center gap-1 transition-all rounded-none cursor-pointer ${
+                                          yumanMethod === 'yoomoney' ? 'border-black bg-black/5 font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                        }`}
+                                      >
+                                        <span className="font-serif text-[13px] font-extrabold text-[#9c27b0] block">Ю</span>
+                                        <span className="text-[9px] uppercase tracking-tight block">ЮMoney</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Dynamic info for selected payment method */}
+                                  {yumanMethod === 'sbp' && (
+                                    <div className="bg-neutral-50 border border-black/5 p-3.5 flex flex-col items-center gap-2 rounded-sm text-center">
+                                      <div className="w-24 h-24 bg-white border border-black/10 p-1.5 flex items-center justify-center relative shadow-sm mx-auto">
+                                        <div className="grid grid-cols-4 grid-rows-4 gap-1 w-full h-full opacity-85">
+                                          <div className="bg-black"></div><div className="bg-black"></div><div className="bg-neutral-200"></div><div className="bg-black"></div>
+                                          <div className="bg-black"></div><div className="bg-neutral-200"></div><div className="bg-black"></div><div className="bg-black"></div>
+                                          <div className="bg-neutral-200"></div><div className="bg-black"></div><div className="bg-black"></div><div className="bg-neutral-200"></div>
+                                          <div className="bg-black"></div><div className="bg-black"></div><div className="bg-neutral-200"></div><div className="bg-black"></div>
+                                        </div>
+                                        <div className="absolute inset-0 flex items-center justify-center">
+                                          <span className="bg-[#9c27b0] text-white text-[7px] font-bold px-1 py-0.5 rounded-none uppercase tracking-wider">YuMan SBP</span>
+                                        </div>
+                                      </div>
+                                      <p className="font-sans text-[10px] text-black/60 max-w-[200px] mx-auto">
+                                        Сканируйте QR-код в мобильном приложении любого банка РФ для моментальной оплаты.
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {yumanMethod === 'card' && (
+                                    <div className="bg-neutral-50 border border-black/5 p-4 flex flex-col gap-3 rounded-sm">
+                                      <div className="flex flex-col gap-1">
+                                        <label className="text-[8px] font-bold uppercase tracking-wider text-black/50">Номер банковской карты</label>
+                                        <input
+                                          type="text"
+                                          placeholder="2200 1234 5678 9012"
+                                          value={yumanCardNumber}
+                                          onChange={(e) => setYumanCardNumber(e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim().substring(0, 19))}
+                                          className="p-2 border border-black/10 bg-white text-xs font-mono w-full focus:border-black focus:outline-none"
+                                        />
+                                      </div>
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div className="flex flex-col gap-1">
+                                          <label className="text-[8px] font-bold uppercase tracking-wider text-black/50">Срок (ММ/ГГ)</label>
+                                          <input
+                                            type="text"
+                                            placeholder="12/28"
+                                            value={yumanCardExpiry}
+                                            onChange={(e) => setYumanCardExpiry(e.target.value.substring(0, 5))}
+                                            className="p-2 border border-black/10 bg-white text-xs font-mono focus:border-black focus:outline-none"
+                                          />
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                          <label className="text-[8px] font-bold uppercase tracking-wider text-black/50">CVC / CVV</label>
+                                          <input
+                                            type="password"
+                                            placeholder="***"
+                                            value={yumanCardCvv}
+                                            onChange={(e) => setYumanCardCvv(e.target.value.replace(/\D/g, '').substring(0, 3))}
+                                            className="p-2 border border-black/10 bg-white text-xs font-mono focus:border-black focus:outline-none"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {yumanMethod === 'yoomoney' && (
+                                    <div className="bg-neutral-50 border border-black/5 p-3 text-center rounded-sm">
+                                      <p className="font-sans text-[10px] text-black/60">
+                                        Вы будете перенаправлены на защищенный шлюз ЮMoney для завершения транзакции.
+                                      </p>
+                                    </div>
+                                  )}
+
+                                  {/* Action button */}
+                                  <button
+                                    onClick={handleYumanPayment}
+                                    disabled={yumanLoading}
+                                    className="w-full py-3 bg-[#9c27b0] text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-[#7b1fa2] transition-colors mt-1.5 flex items-center justify-center gap-2 select-none cursor-pointer"
+                                  >
+                                    {yumanLoading ? (
+                                      <>
+                                        <Loader className="w-3.5 h-3.5 animate-spin" />
+                                        <span>Соединение с YuMan...</span>
+                                      </>
+                                    ) : (
+                                      <span>Оплатить {yumanTariff === 'single' ? '49 ₽' : yumanTariff === 'day' ? '149 ₽' : '390 ₽'} через YuMan</span>
+                                    )}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            /* --- ORIGINAL POLAR OR GLOBAL PLANS BLOCK --- */
+                            <>
+                              <div className="mt-2 text-center">
+                                <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                                  Шаг 2: Оплатите подписку Polar
+                                </span>
+                              </div>
 
                           {fetchingProducts ? (
                             <div className="flex flex-col items-center justify-center py-10 gap-3 text-black/40">
@@ -803,9 +1083,11 @@ export default function App() {
                               </button>
                             </div>
                           )}
-                        </>
-                      )}
-                    </div>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </div>
                   </div>
                 )}
               </div>
