@@ -8,7 +8,9 @@ import {
   SignInButton, 
   SignUpButton, 
   UserButton, 
-  useUser 
+  useUser,
+  SignIn,
+  SignUp
 } from '@clerk/clerk-react';
 import { analyzeFashionImage } from './services/geminiService';
 import { LegalDocModal, CompanyDetailsWidget } from './components/LegalDocuments';
@@ -613,54 +615,34 @@ export default function App() {
                 ) : (
                   <div className="flex flex-col gap-6">
                     {!isSignedIn ? (
-                      // Unregistered user prompt - Step 1: Registration
-                      <div className="flex flex-col gap-6">
-                        <div className="flex flex-col text-neutral-800">
+                      // Unregistered user prompt - Step 1: Registration with embedded Clerk login widget
+                      <div className="flex flex-col gap-5">
+                        <div className="flex flex-col text-neutral-800 text-center">
                           <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-[#9c27b0] mb-1">
                             Бесплатный гостевой лимит исчерпан
                           </span>
-                          <h2 className="font-serif text-3xl italic font-normal tracking-tight">
+                          <h2 className="font-serif text-2xl italic font-normal tracking-tight">
                             Лимит 2 из 2 поисков
                           </h2>
-                          <p className="font-sans text-xs text-black/60 mt-2 leading-relaxed">
-                            Вы израсходовали первые две бесплатные гостевые попытки поиска. Зарегистрируйтесь бесплатно за пару секунд, чтобы автоматически сохранить историю и получить еще 2 полноценных поиска абсолютно бесплатно!
+                          <p className="font-sans text-xs text-black/60 mt-1.5 leading-relaxed max-w-md mx-auto">
+                            Вы израсходовали первые две бесплатные гостевые попытки поиска. Пожалуйста, войдите или зарегистрируйтесь через официальную форму Clerk ниже, и вам сразу начислятся еще 2 бесплатные полноценные попытки поиска абсолютно бесплатно!
                           </p>
                         </div>
 
-                        <div className="border border-black/10 p-5 flex flex-col gap-4 bg-white shadow-sm rounded-none font-sans">
-                          <div className="text-center">
-                            <span className="font-sans text-[10px] font-bold uppercase tracking-widest text-black/40">
-                              Вход или регистрация
-                            </span>
-                          </div>
-
-                          <div className="flex flex-col sm:flex-row gap-3 mt-1">
-                            <SignInButton mode="redirect">
-                              <button className="flex-1 py-3 bg-black text-white text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-neutral-800 transition-colors cursor-pointer select-none">
-                                Войти в аккаунт
-                              </button>
-                            </SignInButton>
-                            <SignUpButton mode="redirect">
-                              <button className="flex-1 py-3 border border-black text-black text-[10px] font-extrabold uppercase tracking-widest text-center hover:bg-black/5 transition-colors cursor-pointer select-none">
-                                Создать аккаунт
-                              </button>
-                            </SignUpButton>
-                          </div>
-                          
-                          <p className="text-[10px] text-black/40 text-center leading-tight">
-                            Регистрация полностью бесплатна. После авторизации вам сразу начислятся +2 дополнительные бесплатные попытки поиска.
-                          </p>
+                        {/* Centered official Clerk login widget matching the user request */}
+                        <div className="flex items-center justify-center w-full border border-black/5 bg-white p-3 py-6 shadow-sm">
+                          <SignIn 
+                            routing="virtual" 
+                            afterSignInUrl="/" 
+                            afterSignUpUrl="/"
+                          />
                         </div>
 
                         {/* Beautiful feature checklist for preview */}
                         <div className="flex flex-col gap-2.5 mt-1 border-t border-black/5 pt-4">
                           <div className="flex items-start gap-2.5 text-xs text-black/70">
                             <Check className="w-4 h-4 text-[#9c27b0] flex-shrink-0 mt-0.5" />
-                            <span>Дополнительные 2 бесплатные попытки сразу после регистрации</span>
-                          </div>
-                          <div className="flex items-start gap-2.5 text-xs text-black/70">
-                            <Check className="w-4 h-4 text-[#9c27b0] flex-shrink-0 mt-0.5" />
-                            <span>Доступ к истории поисков на всех ваших устройствах</span>
+                            <span>Дополнительные 2 бесплатные попытки сразу после авторизации</span>
                           </div>
                           <div className="flex items-start gap-2.5 text-xs text-black/70">
                             <Check className="w-4 h-4 text-[#9c27b0] flex-shrink-0 mt-0.5" />
