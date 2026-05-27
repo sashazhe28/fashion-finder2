@@ -11,6 +11,7 @@ import {
   useUser 
 } from '@clerk/clerk-react';
 import { analyzeFashionImage } from './services/geminiService';
+import { LegalDocModal, CompanyDetailsWidget } from './components/LegalDocuments';
 
 // --- TS Types ---
 interface MarketplaceLink {
@@ -97,8 +98,9 @@ export default function App() {
   const [checkingSubscription, setCheckingSubscription] = useState(false);
 
   // YuMan Paywall Mock states
+  const [activeLegalDoc, setActiveLegalDoc] = useState<'offer' | 'policy' | 'consent' | null>(null);
   const [yumanMethod, setYumanMethod] = useState<'sbp' | 'card' | 'yoomoney'>('sbp');
-  const [yumanTariff, setYumanTariff] = useState<'single' | 'day' | 'month'>('month');
+  const [yumanTariff, setYumanTariff] = useState<'day' | 'week' | 'month'>('week');
   const [yumanLoading, setYumanLoading] = useState(false);
   const [yumanSuccess, setYumanSuccess] = useState(false);
   const [yumanCardNumber, setYumanCardNumber] = useState('');
@@ -114,8 +116,8 @@ export default function App() {
       setIsProUser(true);
       localStorage.setItem('fashionfinder_pro_status', 'true');
       
-      const priceText = yumanTariff === 'single' ? '49 ₽' : yumanTariff === 'day' ? '149 ₽' : '390 ₽';
-      const termText = yumanTariff === 'single' ? 'Разовый поиск' : yumanTariff === 'day' ? 'PRO-доступ на день' : 'PRO-доступ на месяц';
+      const priceText = yumanTariff === 'day' ? '49 ₽' : yumanTariff === 'week' ? '149 ₽' : '390 ₽';
+      const termText = yumanTariff === 'day' ? 'PRO-доступ на день' : yumanTariff === 'week' ? 'PRO-доступ на неделю' : 'PRO-доступ на месяц';
       
       const tg = (window as any).Telegram?.WebApp;
       if (tg) {
@@ -628,14 +630,20 @@ export default function App() {
         </section>
       </main>
 
+      {/* Company Requisites Table/Widget for YooKassa validation */}
+      <CompanyDetailsWidget />
+
       {/* Footer Decor */}
-      <footer className="h-16 border-t border-black/10 px-6 md:px-8 flex items-center justify-between bg-white text-[9px] md:text-[10px] font-sans font-bold tracking-[0.1em] text-black/40 uppercase">
+      <footer className="min-h-16 border-t border-black/10 py-4 px-6 md:px-8 flex flex-col md:flex-row items-center justify-between bg-white gap-4 text-[9px] md:text-[10px] font-sans font-bold tracking-[0.1em] text-black/40 uppercase">
         <p className="font-serif italic text-xs normal-case tracking-normal opacity-60">
           Curating style through visual intelligence.
         </p>
-        <div className="flex space-x-6">
-           <span className="hidden sm:inline">Terms & Archive</span>
-           <span>© 2025 FashionFinder Studio</span>
+        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
+          <button onClick={() => setActiveLegalDoc('offer')} className="hover:text-[#9c27b0] transition-colors cursor-pointer text-left uppercase">Договор оферты</button>
+          <button onClick={() => setActiveLegalDoc('policy')} className="hover:text-[#9c27b0] transition-colors cursor-pointer text-left uppercase">Политика конфиденциальности</button>
+          <button onClick={() => setActiveLegalDoc('consent')} className="hover:text-[#9c27b0] transition-colors cursor-pointer text-left uppercase">Согласие на обработку ПД</button>
+          <span className="text-black/10 hidden lg:inline">|</span>
+          <span>© {new Date().getFullYear()} FashionFinder Studio</span>
         </div>
       </footer>
 
@@ -794,27 +802,27 @@ export default function App() {
                                 <div className="grid grid-cols-3 gap-2">
                                   <button
                                     type="button"
-                                    onClick={() => setYumanTariff('single')}
+                                    onClick={() => setYumanTariff('day')}
                                     className={`p-3 border text-left flex flex-col justify-between transition-all rounded-none cursor-pointer ${
-                                      yumanTariff === 'single' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                      yumanTariff === 'day' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
                                     }`}
                                   >
-                                    <span className="font-sans text-[10px] uppercase text-black/80 block">Разовый</span>
+                                    <span className="font-sans text-[10px] uppercase text-black/80 block">1 день</span>
                                     <span className="font-serif text-lg italic text-black font-semibold mt-1">49 ₽</span>
-                                    <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">один поиск</span>
+                                    <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">24 часа PRO</span>
                                   </button>
 
                                   <button
                                     type="button"
-                                    onClick={() => setYumanTariff('day')}
+                                    onClick={() => setYumanTariff('week')}
                                     className={`p-3 border text-left flex flex-col justify-between relative transition-all rounded-none cursor-pointer ${
-                                      yumanTariff === 'day' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
+                                      yumanTariff === 'week' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
                                     }`}
                                   >
                                     <span className="absolute -top-1.5 right-1 px-1 bg-[#9c27b0] text-white text-[7px] uppercase font-bold tracking-widest rounded-none">Хит</span>
-                                    <span className="font-sans text-[10px] uppercase text-black/80 block">1 день</span>
+                                    <span className="font-sans text-[10px] uppercase text-black/80 block">1 неделя</span>
                                     <span className="font-serif text-lg italic text-black font-semibold mt-1">149 ₽</span>
-                                    <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">24 часа PRO</span>
+                                    <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">7 дней PRO</span>
                                   </button>
 
                                   <button
@@ -824,7 +832,7 @@ export default function App() {
                                       yumanTariff === 'month' ? 'border-[#9c27b0] bg-[#9c27b0]/5 shadow-sm font-bold' : 'border-black/10 hover:border-black/40 bg-white'
                                     }`}
                                   >
-                                    <span className="font-sans text-[10px] uppercase text-black/80 block">Месяц</span>
+                                    <span className="font-sans text-[10px] uppercase text-black/80 block">1 месяц</span>
                                     <span className="font-serif text-lg italic text-black font-semibold mt-1">390 ₽</span>
                                     <span className="font-sans text-[8px] opacity-40 mt-1 uppercase">выгодно</span>
                                   </button>
@@ -955,7 +963,7 @@ export default function App() {
                                     <span>Соединение с YuMan...</span>
                                   </>
                                 ) : (
-                                  <span>Оплатить {yumanTariff === 'single' ? '49 ₽' : yumanTariff === 'day' ? '149 ₽' : '390 ₽'} через YuMan</span>
+                                  <span>Оплатить {yumanTariff === 'day' ? '49 ₽' : yumanTariff === 'week' ? '149 ₽' : '390 ₽'} через YuMan</span>
                                 )}
                               </button>
                             </div>
@@ -1116,6 +1124,9 @@ export default function App() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Russian Legal Documents Modals for YooKassa compliance */}
+      <LegalDocModal type={activeLegalDoc} onClose={() => setActiveLegalDoc(null)} />
     </div>
   );
 }
