@@ -61,6 +61,13 @@ const REGIONS = {
   ]
 };
 
+const REGION_LABELS: Record<keyof typeof REGIONS, string> = {
+  'Russia': 'Россия',
+  'USA': 'США',
+  'Europe': 'Европа',
+  'Central Asia': 'Центральная Азия'
+};
+
 const generateSearchUrls = (query: string, region: keyof typeof REGIONS): MarketplaceLink[] => {
   const encodedQuery = encodeURIComponent(query.trim());
   return REGIONS[region].map(market => ({
@@ -258,7 +265,7 @@ export default function App() {
       <nav className="flex justify-between items-end p-6 md:p-8 border-b border-black/10 bg-[#F9F8F6] z-50">
         <div className="flex flex-col">
           <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 mb-1 tracking-widest">
-            AI-Powered Visual Search
+            Визуальный поиск на базе ИИ
           </span>
           <h1 className="font-serif text-3xl md:text-4xl italic font-normal leading-none tracking-tight">
             FashionFinder
@@ -275,7 +282,7 @@ export default function App() {
               className="appearance-none bg-transparent border-none font-sans text-[10px] font-bold uppercase tracking-widest focus:outline-none pr-4 cursor-pointer"
             >
               {Object.keys(REGIONS).map((r) => (
-                <option key={r} value={r}>{r}</option>
+                <option key={r} value={r}>{REGION_LABELS[r as keyof typeof REGIONS] || r}</option>
               ))}
             </select>
             <ChevronDown className="w-2 h-2 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity" />
@@ -283,8 +290,8 @@ export default function App() {
 
           <SignedIn>
             <div className="hidden sm:flex flex-col items-end">
-              <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 tracking-widest">Account</span>
-              <span className="font-sans text-sm font-semibold">{user?.fullName || user?.username || 'User'}</span>
+              <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 tracking-widest">Личный кабинет</span>
+              <span className="font-sans text-sm font-semibold">{user?.fullName || user?.username || 'Пользователь'}</span>
             </div>
             <div className="hidden sm:block h-10 w-[1px] bg-black/10"></div>
             <UserButton afterSignOutUrl="/" />
@@ -293,7 +300,7 @@ export default function App() {
               className={`flex items-center space-x-2 px-4 py-2 rounded-full border border-black/10 transition-all ${isProUser ? 'bg-black text-white' : 'bg-transparent text-black hover:bg-black/5'}`}
             >
               <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">
-                {isProUser ? 'Pro Active' : 'Upgrade'}
+                {isProUser ? 'PRO Активен' : 'Активировать PRO'}
               </span>
               <Star className={`w-3 h-3 ${isProUser ? 'fill-yellow-400 text-yellow-400' : 'text-black'}`} />
             </button>
@@ -303,12 +310,12 @@ export default function App() {
             <SignInButton mode="redirect">
               <button className="flex items-center space-x-2 px-4 py-2 rounded-full border border-black bg-black text-white hover:bg-neutral-800 transition-all">
                 <LogIn className="w-3 h-3" />
-                <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Sign In</span>
+                <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Войти</span>
               </button>
             </SignInButton>
             <SignUpButton mode="redirect">
               <button className="hidden sm:flex items-center space-x-2 px-4 py-2 rounded-full border border-black text-black hover:bg-black/5 transition-all">
-                <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Sign Up</span>
+                <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">Регистрация</span>
               </button>
             </SignUpButton>
             <button 
@@ -316,7 +323,7 @@ export default function App() {
               className={`flex items-center space-x-2 px-4 py-2 rounded-full border border-black/10 transition-all ${isProUser ? 'bg-black text-white' : 'bg-transparent text-black hover:bg-black/5'}`}
             >
               <span className="font-sans text-[11px] font-bold letter-spacing-wide uppercase tracking-widest">
-                {isProUser ? 'Pro Active' : 'Upgrade'}
+                {isProUser ? 'PRO Активен' : 'Активировать PRO'}
               </span>
               <Star className={`w-3 h-3 ${isProUser ? 'fill-yellow-400 text-yellow-400' : 'text-black'}`} />
             </button>
@@ -328,9 +335,9 @@ export default function App() {
         {/* Left Side: Source */}
         <section className="w-full md:w-[45%] p-6 md:p-10 border-b md:border-b-0 md:border-r border-black/10 flex flex-col">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="font-serif text-2xl italic">Source Analysis</h2>
+            <h2 className="font-serif text-2xl italic">Анализ изображения</h2>
             <span className="font-sans text-[10px] md:text-[11px] uppercase border border-black px-2 py-1 font-bold tracking-widest">
-              Ref: {results ? `ID-${results.length}` : 'WAITING'}
+              Код: {results ? `ID-${results.length}` : 'ОЖИДАНИЕ'}
             </span>
           </div>
 
@@ -371,8 +378,8 @@ export default function App() {
                     <Camera className="w-8 h-8" />
                   </div>
                   <div className="text-center">
-                    <p className="font-serif italic text-lg text-black/60">Upload Inspiration</p>
-                    <p className="font-sans text-[10px] uppercase font-bold tracking-widest opacity-40">JPG / PNG / 5MB</p>
+                    <p className="font-serif italic text-lg text-black/60">Загрузить пример / фото</p>
+                    <p className="font-sans text-[10px] uppercase font-bold tracking-widest opacity-40">JPG / PNG / до 5 МБ</p>
                   </div>
                   <input 
                     type="file" 
@@ -386,10 +393,10 @@ export default function App() {
 
             {loading && (
               <div className="absolute bottom-12 left-12 right-12 bg-white/90 backdrop-blur-md p-4 border border-black/5 z-20">
-                <p className="font-sans text-[10px] font-bold opacity-60 mb-1 tracking-widest uppercase">AI Status</p>
+                <p className="font-sans text-[10px] font-bold opacity-60 mb-1 tracking-widest uppercase">Статус ИИ</p>
                 <p className="font-sans text-xs md:text-sm font-medium animate-pulse flex items-center gap-2">
                   <Loader className="w-3 h-3 animate-spin" />
-                  Scanning visual attributes for high-relevance matches...
+                  Сканирование визуальных признаков для точного поиска...
                 </p>
               </div>
             )}
@@ -404,7 +411,7 @@ export default function App() {
                   ? 'bg-transparent text-black/20 border-black/10 cursor-not-allowed' 
                   : 'bg-black text-white hover:bg-neutral-800'}`}
             >
-              {loading ? 'Processing...' : 'Identify Objects'}
+              {loading ? 'Обработка...' : 'Распознать одежду'}
             </button>
 
             {!isProUser && (
@@ -436,9 +443,9 @@ export default function App() {
         {/* Right Side: Results */}
         <section className="w-full md:w-[55%] p-6 md:p-10 flex flex-col bg-white/30 overflow-y-auto">
           <header className="mb-10 text-center md:text-left">
-             <h2 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight">Identified Items</h2>
+             <h2 className="font-serif text-3xl md:text-4xl mb-4 italic leading-tight">Распознанные вещи</h2>
              <p className="font-sans text-sm opacity-60 max-w-sm mx-auto md:mx-0">
-               Precise search queries generated based on visual fit, texture, and stylistic markers.
+               Точные поисковые запросы, сформированные на основе кроя, текстуры и стиля.
              </p>
           </header>
 
@@ -468,7 +475,7 @@ export default function App() {
                   <div className="flex-1 border-b border-black/10 pb-10">
                     <h3 className="font-sans text-xl md:text-2xl font-bold mb-1 tracking-tight">{item.itemDescription}</h3>
                     <p className="font-sans text-[11px] font-medium opacity-50 mb-6 uppercase tracking-widest">
-                      Search Query: "{item.searchQuery}"
+                      Поисковый запрос: "{item.searchQuery}"
                     </p>
                     
                     <div className="flex flex-wrap gap-2">
@@ -497,7 +504,7 @@ export default function App() {
               {!results && !loading && !error && (
                 <div className="flex flex-col items-center justify-center py-20 text-black/10">
                   <Search className="w-16 h-16 mb-4" />
-                  <p className="font-serif italic text-xl">Results will appear here</p>
+                  <p className="font-serif italic text-xl">Здесь появятся результаты поиска</p>
                 </div>
               )}
             </AnimatePresence>
@@ -511,7 +518,7 @@ export default function App() {
       {/* Footer Decor */}
       <footer className="min-h-16 border-t border-black/10 py-4 px-6 md:px-8 flex flex-col md:flex-row items-center justify-between bg-white gap-4 text-[9px] md:text-[10px] font-sans font-bold tracking-[0.1em] text-black/40 uppercase">
         <p className="font-serif italic text-xs normal-case tracking-normal opacity-60">
-          Curating style through visual intelligence.
+          Создаем стиль с помощью визуального интеллекта.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
           <button onClick={() => setActiveLegalDoc('offer')} className="hover:text-[#9c27b0] transition-colors cursor-pointer text-left uppercase">Договор оферты</button>
@@ -555,10 +562,10 @@ export default function App() {
                   <div className="flex flex-col gap-6">
                     <div className="flex flex-col">
                       <span className="font-sans text-[10px] font-semibold letter-spacing-wide uppercase opacity-50 mb-1 tracking-widest">
-                        Your Premium Access
+                        Ваш Premium-доступ
                       </span>
                       <h2 className="font-serif text-3xl italic font-normal tracking-tight flex items-center gap-2">
-                        PRO Active <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
+                        PRO Активен <Star className="w-5 h-5 fill-yellow-400 text-yellow-400" />
                       </h2>
                       <p className="font-sans text-xs text-black/60 mt-2">
                         Ваша подписка FashionFinder PRO полностью активна. Наслаждайтесь бесконечным умным поиском одежды!
@@ -878,7 +885,7 @@ export default function App() {
               </div>
 
               <div className="text-center text-[10px] text-black/40 uppercase tracking-widest">
-                Protected and compiled by YooKassa Secure Connection
+                Защищено безопасным соединением ЮКасса
               </div>
             </motion.div>
           </motion.div>
