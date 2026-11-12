@@ -2,10 +2,15 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { config } from "../config";
 
 // The key lives only here, on the server. It is never sent to the browser.
-const ai = new GoogleGenAI({
-  apiKey: config.gemini.apiKey,
-  ...(config.gemini.baseUrl ? { httpOptions: { baseUrl: config.gemini.baseUrl } } : {}),
-});
+// Optional gateway (e.g. Cloudflare AI Gateway) in front of the Gemini API
+const httpOptions = config.gemini.baseUrl
+  ? {
+      baseUrl: config.gemini.baseUrl,
+      ...(config.gemini.gatewayToken ? { headers: { "cf-aig-authorization": `Bearer ${config.gemini.gatewayToken}` } } : {}),
+    }
+  : undefined;
+
+const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey, ...(httpOptions ? { httpOptions } : {}) });
 
 const LANGUAGE_BY_REGION: Record<string, string> = {
   Russia: "Russian",

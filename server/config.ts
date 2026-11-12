@@ -30,6 +30,8 @@ export const config = {
     fallbackModel: str("GEMINI_FALLBACK_MODEL"),
     // Optional: custom API address (e.g. a gateway/proxy in a supported region). Empty = Google default
     baseUrl: str("GEMINI_BASE_URL"),
+    // Cloudflare AI Gateway auth token (sent as cf-aig-authorization), if the gateway is authenticated
+    gatewayToken: str("GEMINI_GATEWAY_TOKEN"),
   },
 
   clerk: {
