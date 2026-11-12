@@ -28,6 +28,8 @@ export const config = {
     model: str("GEMINI_MODEL", "gemini-3-flash-preview"),
     // Optional second model if the main one keeps answering 503/429 (e.g. a stable flash model)
     fallbackModel: str("GEMINI_FALLBACK_MODEL"),
+    // Optional: custom API address (e.g. a gateway/proxy in a supported region). Empty = Google default
+    baseUrl: str("GEMINI_BASE_URL"),
   },
 
   clerk: {

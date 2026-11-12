@@ -2,7 +2,10 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { config } from "../config";
 
 // The key lives only here, on the server. It is never sent to the browser.
-const ai = new GoogleGenAI({ apiKey: config.gemini.apiKey });
+const ai = new GoogleGenAI({
+  apiKey: config.gemini.apiKey,
+  ...(config.gemini.baseUrl ? { httpOptions: { baseUrl: config.gemini.baseUrl } } : {}),
+});
 
 const LANGUAGE_BY_REGION: Record<string, string> = {
   Russia: "Russian",
