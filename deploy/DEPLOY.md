@@ -52,19 +52,27 @@ server/
 
 Логика выдачи PRO (`pro/entitlements.ts`) не меняется.
 
-## Первая установка на сервер (Ubuntu 24.04)
+## Первая установка на сервер (Ubuntu 22.04 / 24.04)
+
+Приложение ставится отдельно и не трогает другие проекты на сервере: свой Node.js в `/opt/fashionfinder/node`, свой пользователь, свой systemd-сервис и отдельный server-блок nginx только для домена приложения.
 
 ```bash
-# Node.js 22, nginx, certbot
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-apt-get install -y nodejs nginx certbot python3-certbot-nginx git
+# nginx и certbot (если уже стоят, apt ничего не сломает)
+apt-get update && apt-get install -y nginx certbot python3-certbot-nginx
 
 useradd --system --home /opt/fashionfinder --shell /usr/sbin/nologin fashionfinder
 mkdir -p /opt/fashionfinder && cd /opt/fashionfinder
-# скопировать код (git clone или rsync), затем:
-cp .env.example .env && nano .env     # заполнить ключи, PUBLIC_URL=https://DOMAIN
-npm ci
-npm run build
+
+# свой Node.js 22 (системный не трогаем)
+NODE_V=v22.23.5
+curl -fsSLO https://nodejs.org/dist/$NODE_V/node-$NODE_V-linux-x64.tar.xz
+curl -fsSL https://nodejs.org/dist/$NODE_V/SHASUMS256.txt | grep linux-x64.tar.xz | sha256sum -c -
+mkdir node && tar -xJf node-$NODE_V-linux-x64.tar.xz -C node --strip-components=1 && rm node-$NODE_V-linux-x64.tar.xz
+export PATH=/opt/fashionfinder/node/bin:$PATH
+
+# код: собрать локально (npm run build) и залить dist/, dist-server/, package.json, package-lock.json, deploy/
+npm ci --omit=dev
+cp .env.example .env && nano .env     # ключи, PUBLIC_URL=https://DOMAIN, PORT (свободный порт)
 mkdir -p data && chown -R fashionfinder:fashionfinder data && chown root:fashionfinder .env && chmod 640 .env
 
 cp deploy/fashionfinder.service /etc/systemd/system/
@@ -76,14 +84,16 @@ nginx -t && systemctl reload nginx
 certbot --nginx -d ваш-домен.ru -d www.ваш-домен.ru
 ```
 
-Обновление: `git pull && npm ci && npm run build && systemctl restart fashionfinder`.
+Важно: в `.env` должны быть `VITE_CLERK_PUBLISHABLE_KEY` и `VITE_PUBLIC_POSTHOG_*` на момент сборки фронта (`npm run build`), они попадают в сборку.
+
+Обновление: собрать локально, залить `dist/`, `dist-server/`, `package*.json`, затем `npm ci --omit=dev && systemctl restart fashionfinder`.
 
 Логи: `journalctl -u fashionfinder -f`.
 
 Проверка, что Gemini доступен с сервера:
 
 ```bash
-curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY" | head -c 300
+curl -s -H "x-goog-api-key: $GEMINI_API_KEY" "https://generativelanguage.googleapis.com/v1beta/models" | head -c 300
 ```
 
 ## Clerk
