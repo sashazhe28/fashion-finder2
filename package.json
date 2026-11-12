@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port=3000 --host=0.0.0.0",
+    "dev": "tsx server/index.ts",
+    "dev:client": "vite --port=3000 --host=0.0.0.0",
     "build": "vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
@@ -13,12 +15,14 @@
   "dependencies": {
     "@clerk/clerk-js": "^6.11.0",
     "@clerk/clerk-react": "^5.61.6",
+    "@clerk/express": "^2.1.88",
     "@google/genai": "^1.29.0",
     "@posthog/react": "^1.9.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.7.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "posthog-js": "^1.372.10",
@@ -34,5 +38,8 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
+  },
+  "engines": {
+    "node": ">=20.9"
   }
 }

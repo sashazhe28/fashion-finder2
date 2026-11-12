@@ -15,6 +15,10 @@ View your app in AI Studio: https://ai.studio/apps/95bfc27b-8504-4795-840e-9f9fb
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Copy `.env.example` to `.env.local` and fill in the keys (`GEMINI_API_KEY`, Clerk, PostHog, YooKassa)
+3. Run the app (Express server with Vite middleware, http://localhost:3000):
    `npm run dev`
+
+The Gemini key is used only by the server (`server/`), it is not included in the frontend build.
+
+Production deploy, payments and architecture: see [deploy/DEPLOY.md](deploy/DEPLOY.md).

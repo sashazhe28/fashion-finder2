@@ -7,12 +7,13 @@ import {
   SignedOut, 
   SignInButton, 
   SignUpButton, 
-  UserButton, 
+  UserButton,
   useUser,
+  useAuth,
   SignIn,
   SignUp
 } from '@clerk/clerk-react';
-import { analyzeFashionImage } from './services/geminiService';
+import { api, ApiError, pendingPayment, PaymentMethod, Usage } from './services/api';
 import { LegalDocModal, CompanyDetailsWidget } from './components/LegalDocuments';
 
 // --- TS Types ---
@@ -80,80 +81,129 @@ const generateSearchUrls = (query: string, region: keyof typeof REGIONS): Market
 export default function App() {
   const posthog = usePostHog();
   const { user, isSignedIn } = useUser();
+  const { isLoaded: isAuthLoaded, getToken } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [base64Image, setBase64Image] = useState<string | null>(null);
+  const [imageMimeType, setImageMimeType] = useState<string>('image/jpeg');
   const [results, setResults] = useState<ItemResult[] | null>(null);
   const [selectedRegion, setSelectedRegion] = useState<keyof typeof REGIONS>('Russia');
 
-  const [isProUser, setIsProUser] = useState(false);
+  // PRO status and free search counters come from the server (Clerk metadata / guest cookie),
+  // so they cannot be changed or reset in the browser.
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const isProUser = !!usage?.isPro;
+  const freeLimit = usage?.freeLimit ?? 2;
+  const freeUsed = usage?.freeUsed ?? 0;
   const [isAppReady, setIsAppReady] = useState(false);
-  
-  // Track separate free search counts for unregistered and registered users
-  const [unregisteredSearchCount, setUnregisteredSearchCount] = useState<number>(() => {
-    const cached = localStorage.getItem('fashionfinder_unregistered_search_count');
-    return cached ? parseInt(cached, 10) : 0;
-  });
 
-  const [registeredSearchCount, setRegisteredSearchCount] = useState<number>(() => {
-    const cached = localStorage.getItem('fashionfinder_registered_search_count');
-    return cached ? parseInt(cached, 10) : 0;
-  });
+  const tokenGetter = useCallback(() => getToken(), [getToken]);
 
-  // Test Environment Check - strictly local or the developer sandbox (not pre-release/actual domain)
-  const isTestEnvironment = typeof window !== 'undefined' && (
-    window.location.hostname.includes('ais-dev-') || 
-    window.location.hostname.includes('localhost') || 
-    window.location.hostname.includes('127.0.0.1')
-  );
+  const refreshUsage = useCallback(async () => {
+    try {
+      setUsage(await api.me(isSignedIn ? tokenGetter : null));
+    } catch (e) {
+      console.error(e);
+    }
+  }, [isSignedIn, tokenGetter]);
 
   // Upgrade Modal visibility
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
-  // YuMan Paywall Mock states
+  // YooKassa paywall states
   const [activeLegalDoc, setActiveLegalDoc] = useState<'offer' | 'policy' | 'consent' | null>(null);
   const [yumanMethod, setYumanMethod] = useState<'sbp' | 'card' | 'yoomoney'>('sbp');
   const [yumanTariff, setYumanTariff] = useState<'day' | 'week' | 'month'>('week');
   const [yumanLoading, setYumanLoading] = useState(false);
   const [yumanSuccess, setYumanSuccess] = useState(false);
-  const [yumanCardNumber, setYumanCardNumber] = useState('');
-  const [yumanCardExpiry, setYumanCardExpiry] = useState('');
-  const [yumanCardCvv, setYumanCardCvv] = useState('');
+  const [paymentError, setPaymentError] = useState<string | null>(null);
 
-  const handleYumanPayment = () => {
-    setYumanLoading(true);
-    setTimeout(() => {
-      setYumanLoading(false);
-      setYumanSuccess(true);
-      
-      setIsProUser(true);
-      localStorage.setItem('fashionfinder_pro_status', 'true');
-      
-      const priceText = yumanTariff === 'day' ? '49 ₽' : yumanTariff === 'week' ? '149 ₽' : '390 ₽';
-      const termText = yumanTariff === 'day' ? 'PRO-доступ на день' : yumanTariff === 'week' ? 'PRO-доступ на неделю' : 'PRO-доступ на месяц';
-      
-      const tg = (window as any).Telegram?.WebApp;
-      if (tg) {
-        tg.showAlert(`Оплата ${priceText} успешно получена через ЮКасса! Активирован тариф: ${termText}.`);
-      } else {
-        alert(`Оплата ${priceText} успешно получена через ЮКасса! Активирован тариф: ${termText}.`);
-      }
-      
-      setTimeout(() => {
-        setShowUpgradeModal(false);
-        setYumanSuccess(false);
-      }, 1500);
-    }, 2000);
+  const METHOD_TO_API: Record<'sbp' | 'card' | 'yoomoney', PaymentMethod> = {
+    sbp: 'sbp',
+    card: 'bank_card',
+    yoomoney: 'yoo_money',
   };
 
-  // Hydrate local PRO status cache
+  // Payment is created on the server, then the user goes to the YooKassa payment page
+  const handleYumanPayment = async () => {
+    setYumanLoading(true);
+    setPaymentError(null);
+    try {
+      const payment = await api.createPayment(tokenGetter, {
+        tariff: yumanTariff,
+        method: METHOD_TO_API[yumanMethod],
+        region: selectedRegion,
+      });
+      posthog?.capture('payment_started', { tariff: yumanTariff, method: yumanMethod, provider: payment.provider });
+      pendingPayment.save({ provider: payment.provider, paymentId: payment.paymentId });
+      window.location.href = payment.confirmationUrl;
+    } catch (e) {
+      console.error(e);
+      setPaymentError(e instanceof ApiError && e.message ? e.message : 'Не удалось создать платёж. Попробуйте позже.');
+      setYumanLoading(false);
+    }
+  };
+
   useEffect(() => {
     setIsAppReady(true);
-    const isPro = localStorage.getItem('fashionfinder_pro_status') === 'true';
-    if (isPro) {
-      setIsProUser(true);
-    }
   }, []);
+
+  // Load PRO status / counters once Clerk knows whether the user is signed in
+  useEffect(() => {
+    if (isAuthLoaded) refreshUsage();
+  }, [isAuthLoaded, isSignedIn, refreshUsage]);
+
+  // After returning from the payment page: ask the server to check the payment.
+  // The webhook usually grants PRO first; this is a fallback if it is late.
+  useEffect(() => {
+    if (!isAuthLoaded || !isSignedIn) return;
+    const pending = pendingPayment.load();
+    const url = new URL(window.location.href);
+    if (url.searchParams.has('payment_return')) {
+      url.searchParams.delete('payment_return');
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+    if (!pending) return;
+
+    let cancelled = false;
+    (async () => {
+      for (let attempt = 0; attempt < 10 && !cancelled; attempt++) {
+        try {
+          const res = await api.paymentStatus(tokenGetter, pending.provider, pending.paymentId);
+          setUsage((u) => ({ ...(u ?? res.usage), ...res.usage }));
+          if (res.status === 'succeeded') {
+            pendingPayment.clear();
+            posthog?.capture('payment_succeeded', { provider: pending.provider });
+            setShowUpgradeModal(true);
+            setYumanSuccess(true);
+            setTimeout(() => {
+              setShowUpgradeModal(false);
+              setYumanSuccess(false);
+            }, 2500);
+            return;
+          }
+          if (res.status === 'canceled') {
+            pendingPayment.clear();
+            setShowUpgradeModal(true);
+            setPaymentError('Оплата не завершена. Можно попробовать ещё раз.');
+            return;
+          }
+        } catch (e) {
+          console.error(e);
+          if (e instanceof ApiError && (e.status === 403 || e.status === 404 || e.status === 400)) {
+            pendingPayment.clear();
+            return;
+          }
+        }
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+      // Still pending after ~30 s: keep the id, it will be checked again on next visit (for 1 day)
+      if (Date.now() - pending.at > 24 * 60 * 60 * 1000) pendingPayment.clear();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthLoaded, isSignedIn, tokenGetter, posthog]);
 
   const handleProSubscription = useCallback(() => {
     setShowUpgradeModal(true);
@@ -171,6 +221,7 @@ export default function App() {
     const reader = new FileReader();
     reader.onloadend = () => {
       const base64 = (reader.result as string).split(',')[1];
+      setImageMimeType(file.type || 'image/jpeg');
       setBase64Image(base64);
       setResults(null);
       setError(null);
@@ -181,27 +232,23 @@ export default function App() {
   const handleSearch = async () => {
     if (!base64Image) return;
 
-    // Enforce 2 free searches for non-PRO users depending on registration status
-    if (!isProUser) {
-      if (!isSignedIn) {
-        if (unregisteredSearchCount >= 2) {
-          setShowUpgradeModal(true);
-          return;
-        }
-      } else {
-        if (registeredSearchCount >= 2) {
-          setShowUpgradeModal(true);
-          return;
-        }
-      }
+    // Quick check for UX only. The real limit is enforced by the server.
+    if (usage && !usage.isPro && usage.freeRemaining <= 0) {
+      setShowUpgradeModal(true);
+      return;
     }
 
     setLoading(true);
     setError(null);
 
     try {
-      const itemAnalysis = await analyzeFashionImage(base64Image, selectedRegion);
-      
+      const { items: itemAnalysis, usage: newUsage } = await api.analyze(isSignedIn ? tokenGetter : null, {
+        image: base64Image,
+        mimeType: imageMimeType,
+        region: selectedRegion,
+      });
+      setUsage((u) => ({ ...(u ?? newUsage), ...newUsage }));
+
       const enrichedResults = itemAnalysis.map((item: any) => ({
         ...item,
         marketplaceLinks: generateSearchUrls(item.searchQuery, selectedRegion)
@@ -215,37 +262,25 @@ export default function App() {
       setResults(enrichedResults);
       if (enrichedResults.length === 0) {
         setError("Предметы не найдены. Попробуйте другое фото.");
-      } else {
-        // Increment search count only for non-PRO users
-        if (!isProUser) {
-          if (!isSignedIn) {
-            const nextCount = unregisteredSearchCount + 1;
-            setUnregisteredSearchCount(nextCount);
-            localStorage.setItem('fashionfinder_unregistered_search_count', nextCount.toString());
-            
-            if (nextCount >= 2) {
-              // Automatically prompt upgrade/register modal once 2nd search completes
-              setTimeout(() => {
-                setShowUpgradeModal(true);
-              }, 1000);
-            }
-          } else {
-            const nextCount = registeredSearchCount + 1;
-            setRegisteredSearchCount(nextCount);
-            localStorage.setItem('fashionfinder_registered_search_count', nextCount.toString());
-            
-            if (nextCount >= 2) {
-              // Automatically prompt upgrade/paywall modal once 2nd search completes
-              setTimeout(() => {
-                setShowUpgradeModal(true);
-              }, 1000);
-            }
-          }
-        }
+      } else if (!newUsage.isPro && newUsage.freeRemaining <= 0) {
+        // Prompt register/paywall modal once the last free search completes
+        setTimeout(() => {
+          setShowUpgradeModal(true);
+        }, 1000);
       }
     } catch (e) {
       console.error(e);
-      setError("Ошибка при анализе изображения. Пожалуйста, попробуйте позже.");
+      if (e instanceof ApiError && e.status === 402) {
+        if (e.data?.usage) setUsage((u) => ({ ...(u ?? e.data.usage), ...e.data.usage }));
+        if (e.code === 'guest_ip_limit') {
+          setError("Лимит бесплатных поисков с этой сети на сегодня исчерпан. Войдите в аккаунт, чтобы продолжить.");
+        }
+        setShowUpgradeModal(true);
+      } else if (e instanceof ApiError && (e.status === 400 || e.status === 429)) {
+        setError(e.message);
+      } else {
+        setError("Ошибка при анализе изображения. Пожалуйста, попробуйте позже.");
+      }
     } finally {
       setLoading(false);
     }
@@ -418,16 +453,16 @@ export default function App() {
               <div className="mt-4 text-center flex flex-col items-center justify-center">
                 <span className="font-mono text-[10px] uppercase tracking-wider text-[#1A1A1A] opacity-60">
                   {!isSignedIn ? (
-                    unregisteredSearchCount >= 2
-                      ? "Вы израсходовали 2 бесплатные попытки без регистрации"
-                      : `Бесплатные поиски без регистрации: ${unregisteredSearchCount} из 2`
+                    freeUsed >= freeLimit
+                      ? `Вы израсходовали ${freeLimit} бесплатные попытки без регистрации`
+                      : `Бесплатные поиски без регистрации: ${freeUsed} из ${freeLimit}`
                   ) : (
-                    registeredSearchCount >= 2
-                      ? "Лимит исчерпан: 2 из 2 поисков после регистрации"
-                      : `Использовано бесплатных поисков: ${registeredSearchCount} из 2`
+                    freeUsed >= freeLimit
+                      ? `Лимит исчерпан: ${freeLimit} из ${freeLimit} поисков после регистрации`
+                      : `Использовано бесплатных поисков: ${freeUsed} из ${freeLimit}`
                   )}
                 </span>
-                {((!isSignedIn && unregisteredSearchCount >= 2) || (isSignedIn && registeredSearchCount >= 2)) && (
+                {usage && freeUsed >= freeLimit && (
                   <p className="font-sans text-[11px] text-red-600 font-semibold mt-1 animate-pulse">
                     {!isSignedIn 
                       ? "Зарегистрируйтесь, чтобы получить еще 2 бесплатные попытки." 
@@ -576,9 +611,14 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <span className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></span>
                         <span className="font-sans text-[10px] font-bold uppercase tracking-wider text-emerald-900">
-                          {isTestEnvironment ? "Подписка Активна (Sandbox)" : "Подписка Активна"}
+                          {usage?.paymentsTestMode ? "Подписка Активна (тестовый магазин)" : "Подписка Активна"}
                         </span>
                       </div>
+                      {usage?.proUntil && (
+                        <p className="font-sans text-[11px] text-emerald-950/70">
+                          Действует до: <strong className="font-bold">{new Date(usage.proUntil).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</strong>
+                        </p>
+                      )}
                       {isSignedIn && (
                         <p className="font-sans text-[11px] text-emerald-950/70">
                           Клиент: <strong className="font-bold">{user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress}</strong>
@@ -601,23 +641,6 @@ export default function App() {
                       </li>
                     </ul>
 
-                    {isTestEnvironment && (
-                      <div className="flex flex-col gap-2.5 border-t border-black/5 pt-4">
-                        <button
-                          onClick={() => {
-                            setIsProUser(false);
-                            localStorage.removeItem('fashionfinder_pro_status');
-                            setShowUpgradeModal(false);
-                            const tg = (window as any).Telegram?.WebApp;
-                            if (tg) tg.showAlert('PRO-статус приостановлен (тестовый режим)');
-                            else alert('PRO-статус приостановлен (тестовый режим)');
-                          }}
-                          className="w-full py-3 border border-red-200 text-red-600 bg-red-50 hover:bg-red-100/50 text-[10px] font-bold uppercase tracking-widest text-center transition-colors shadow-sm"
-                        >
-                          Приостановить PRO (для тестов лимита)
-                        </button>
-                      </div>
-                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col gap-6">
@@ -795,69 +818,17 @@ export default function App() {
                                 </div>
                               </div>
 
-                              {/* Dynamic info for selected payment method */}
-                              {yumanMethod === 'sbp' && (
-                                <div className="bg-neutral-50 border border-black/5 p-3.5 flex flex-col items-center gap-2 rounded-sm text-center">
-                                  <div className="w-24 h-24 bg-white border border-black/10 p-1.5 flex items-center justify-center relative shadow-sm mx-auto">
-                                    <div className="grid grid-cols-4 grid-rows-4 gap-1 w-full h-full opacity-85">
-                                      <div className="bg-black"></div><div className="bg-black"></div><div className="bg-neutral-200"></div><div className="bg-black"></div>
-                                      <div className="bg-black"></div><div className="bg-neutral-200"></div><div className="bg-black"></div><div className="bg-black"></div>
-                                      <div className="bg-neutral-200"></div><div className="bg-black"></div><div className="bg-black"></div><div className="bg-neutral-200"></div>
-                                      <div className="bg-black"></div><div className="bg-black"></div><div className="bg-neutral-200"></div><div className="bg-black"></div>
-                                    </div>
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                      <span className="bg-[#9c27b0] text-white text-[7px] font-bold px-1 py-0.5 rounded-none uppercase tracking-wider">ЮКасса СБП</span>
-                                    </div>
-                                  </div>
-                                  <p className="font-sans text-[10px] text-black/60 max-w-[200px] mx-auto">
-                                    Сканируйте QR-код в мобильном приложении любого банка РФ для моментальной оплаты.
-                                  </p>
-                                </div>
-                              )}
+                              {/* Card data is entered only on the YooKassa page, never in our app */}
+                              <div className="bg-neutral-50 border border-black/5 p-3 text-center rounded-sm">
+                                <p className="font-sans text-[10px] text-black/60">
+                                  {yumanMethod === 'sbp' && 'Откроется страница ЮKassa с QR-кодом СБП: оплатите в приложении любого банка РФ.'}
+                                  {yumanMethod === 'card' && 'Данные карты вводятся на защищённой странице ЮKassa, в приложение они не попадают.'}
+                                  {yumanMethod === 'yoomoney' && 'Вы будете перенаправлены на защищённую страницу ЮKassa для оплаты через ЮMoney.'}
+                                </p>
+                              </div>
 
-                              {yumanMethod === 'card' && (
-                                <div className="bg-neutral-50 border border-black/5 p-4 flex flex-col gap-3 rounded-sm">
-                                  <div className="flex flex-col gap-1">
-                                    <label className="text-[8px] font-bold uppercase tracking-wider text-black/50">Номер банковской карты</label>
-                                    <input
-                                      type="text"
-                                      placeholder="2200 1234 5678 9012"
-                                      value={yumanCardNumber}
-                                      onChange={(e) => setYumanCardNumber(e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim().substring(0, 19))}
-                                      className="p-2 border border-black/10 bg-white text-xs font-mono w-full focus:border-black focus:outline-none"
-                                    />
-                                  </div>
-                                  <div className="grid grid-cols-2 gap-3">
-                                    <div className="flex flex-col gap-1">
-                                      <label className="text-[8px] font-bold uppercase tracking-wider text-black/50">Срок (ММ/ГГ)</label>
-                                      <input
-                                        type="text"
-                                        placeholder="12/28"
-                                        value={yumanCardExpiry}
-                                        onChange={(e) => setYumanCardExpiry(e.target.value.substring(0, 5))}
-                                        className="p-2 border border-black/10 bg-white text-xs font-mono focus:border-black focus:outline-none"
-                                      />
-                                    </div>
-                                    <div className="flex flex-col gap-1">
-                                      <label className="text-[8px] font-bold uppercase tracking-wider text-black/50">CVC / CVV</label>
-                                      <input
-                                        type="password"
-                                        placeholder="***"
-                                        value={yumanCardCvv}
-                                        onChange={(e) => setYumanCardCvv(e.target.value.replace(/\D/g, '').substring(0, 3))}
-                                        className="p-2 border border-black/10 bg-white text-xs font-mono focus:border-black focus:outline-none"
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-
-                              {yumanMethod === 'yoomoney' && (
-                                <div className="bg-neutral-50 border border-black/5 p-3 text-center rounded-sm">
-                                  <p className="font-sans text-[10px] text-black/60">
-                                    Вы будете перенаправлены на защищенный шлюз ЮКасса для завершения транзакции.
-                                  </p>
-                                </div>
+                              {paymentError && (
+                                <p className="font-sans text-[11px] text-red-600 text-center">{paymentError}</p>
                               )}
 
                               {/* Action button */}

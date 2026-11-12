@@ -1,0 +1,26 @@
+# /etc/systemd/system/fashionfinder.service
+[Unit]
+Description=FashionFinder (React + Express)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=fashionfinder
+Group=fashionfinder
+WorkingDirectory=/opt/fashionfinder
+EnvironmentFile=/opt/fashionfinder/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /opt/fashionfinder/node_modules/tsx/dist/cli.mjs server/index.ts
+Restart=always
+RestartSec=3
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/fashionfinder/data
+
+[Install]
+WantedBy=multi-user.target
