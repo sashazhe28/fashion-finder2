@@ -19,11 +19,39 @@ export interface AnalyzedItem {
 const systemPrompt = (language: string) =>
   `You are a visual search expert for fashion marketplaces. Analyze the image and identify up to 3 distinct items. For each item, focus **only on visible attributes (Type of item, Main Color, and Key Style/Fit)**. Generate the single, shortest, and most effective ${language} search query that accurately reflects the visual elements and will yield the highest relevance on search engines (e.g., in English: 'Red cropped cardigan'). Do not guess brand or fabric. Prefer simplicity and high relevance. You MUST respond with a JSON array structure. All descriptions and search queries MUST be in ${language}.`;
 
+const RETRYABLE = new Set([429, 500, 503]);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const statusOf = (e: any): number => Number(e?.status ?? e?.code ?? e?.error?.code) || 0;
+
+/** Preview models sometimes answer 503 "high demand": retry, then try the fallback model if set. */
+async function generateWithRetry(build: (model: string) => Promise<{ text?: string }>) {
+  const models = [config.gemini.model, ...(config.gemini.fallbackModel ? [config.gemini.fallbackModel] : [])];
+  let lastError: unknown;
+  for (const model of models) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await build(model);
+      } catch (e) {
+        lastError = e;
+        if (!RETRYABLE.has(statusOf(e))) throw e;
+        console.warn(`[gemini] ${model} attempt ${attempt + 1}: ${statusOf(e)}, retrying`);
+        await sleep(800 * (attempt + 1));
+      }
+    }
+  }
+  throw lastError;
+}
+
+function parseJsonArray(text: string): unknown {
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  return JSON.parse(cleaned);
+}
+
 export async function analyzeFashionImage(base64Data: string, mimeType: string, region: string): Promise<AnalyzedItem[]> {
   const language = LANGUAGE_BY_REGION[region] || "Russian";
 
-  const response = await ai.models.generateContent({
-    model: config.gemini.model,
+  const response = await generateWithRetry((model) => ai.models.generateContent({
+    model,
     contents: [
       {
         role: "user",
@@ -55,10 +83,10 @@ export async function analyzeFashionImage(base64Data: string, mimeType: string, 
       },
       systemInstruction: systemPrompt(language),
     },
-  });
+  }));
 
   if (!response.text) throw new Error("Empty response from Gemini");
-  const parsed = JSON.parse(response.text);
+  const parsed = parseJsonArray(response.text);
   if (!Array.isArray(parsed)) throw new Error("Unexpected Gemini response format");
 
   return parsed
