@@ -1,0 +1,9 @@
+[Unit]
+Description=FashionFinder: update the site from GitHub main
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/fashionfinder-autodeploy
+Nice=10

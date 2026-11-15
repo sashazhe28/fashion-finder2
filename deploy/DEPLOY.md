@@ -108,3 +108,15 @@ curl -s -H "x-goog-api-key: $GEMINI_API_KEY" "https://generativelanguage.googlea
 3. Проверка тестовыми картами ЮKassa: https://yookassa.ru/developers/payment-acceptance/testing-and-going-live/testing
 4. Если в магазине включены чеки (54-ФЗ), поставить `YOOKASSA_RECEIPT=true` и при необходимости `YOOKASSA_VAT_CODE`, `YOOKASSA_TAX_SYSTEM_CODE`.
 5. Боевой магазин: заменить shopId и секрет на боевые, повторить пункт 2 в боевом кабинете, `systemctl restart fashionfinder`.
+
+## Автообновление из GitHub
+
+После изменений в ветке `main` сервер сам обновляет сайт, обычно за 3-6 минут (проверка раз в 2 минуты плюс сборка).
+
+- Сборка идёт под отдельным пользователем `ffbuild` без доступа к `.env`, в неё передаются только публичные `VITE_*`.
+- Сайт переключается, только если сборка прошла и `/api/health` отвечает. Иначе остаётся (или возвращается) прежняя версия.
+- Версия без папки `server/` или с вызовом Gemini из браузера (`@google/genai` в `src/`, ключ в `vite.config.ts`) не выкладывается. Это защита от старой копии из AI Studio.
+- Неудачный коммит повторно не собирается: исправьте и запушьте снова, или `rm /var/lib/ffautodeploy/failed`.
+- Логи: `journalctl -u fashionfinder-autodeploy -n 50`. Выключить: `systemctl disable --now fashionfinder-autodeploy.timer`.
+- Установка (один раз, root): `bash /opt/fashionfinder/deploy/install-autodeploy.sh`. Скрипт ставится в `/usr/local/sbin`, поэтому пуш в репозиторий не может изменить сам скрипт.
+- `.env`, systemd и nginx автообновление не трогает: их меняют вручную на сервере.

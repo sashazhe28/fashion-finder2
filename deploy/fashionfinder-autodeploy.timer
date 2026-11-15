@@ -1,0 +1,10 @@
+[Unit]
+Description=FashionFinder: check GitHub main every 2 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=2min
+Persistent=false
+
+[Install]
+WantedBy=timers.target
