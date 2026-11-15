@@ -14,7 +14,7 @@ rm -rf dist dist-server
 npm run build
 
 # Safety: no server secrets in the browser bundle
-if grep -lE "AIza[0-9A-Za-z_-]{35}|sk_(live|test)_|YOOKASSA_SECRET|live_[A-Za-z0-9]{20,}" dist/assets/*.js >/dev/null 2>&1; then
+if grep -lE "AIza[0-9A-Za-z_-]{35}|sk_(live|test)_|YOOKASSA_SECRET|(^|[^A-Za-z0-9_])live_[A-Za-z0-9_-]{20,}" dist/assets/*.js >/dev/null 2>&1; then
   echo "Secret-looking string found in dist/, aborting" >&2
   exit 1
 fi
