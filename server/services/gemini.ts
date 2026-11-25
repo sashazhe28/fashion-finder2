@@ -28,22 +28,35 @@ const systemPrompt = (language: string) =>
   `You are a visual search expert for fashion marketplaces. Analyze the image and identify up to 3 distinct items. For each item, focus **only on visible attributes (Type of item, Main Color, and Key Style/Fit)**. Generate the single, shortest, and most effective ${language} search query that accurately reflects the visual elements and will yield the highest relevance on search engines (e.g., in English: 'Red cropped cardigan'). Do not guess brand or fabric. Prefer simplicity and high relevance. You MUST respond with a JSON array structure. All descriptions and search queries MUST be in ${language}.`;
 
 const RETRYABLE = new Set([429, 500, 503]);
+// nginx waits 60 s for the answer: one hung model plus the fallback must fit in that.
+const ATTEMPT_TIMEOUT_MS = 20_000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const statusOf = (e: any): number => Number(e?.status ?? e?.code ?? e?.error?.code) || 0;
 
-/** Preview models sometimes answer 503 "high demand": retry, then try the fallback model if set. */
-async function generateWithRetry(build: (model: string) => Promise<{ text?: string }>) {
+/**
+ * Models sometimes answer 503 "high demand" or hang without answering.
+ * 503: retry with a pause. Hang: abort after ATTEMPT_TIMEOUT_MS and go straight to the fallback model.
+ */
+async function generateWithRetry(build: (model: string, signal: AbortSignal) => Promise<{ text?: string }>) {
   const models = [config.gemini.model, ...(config.gemini.fallbackModel ? [config.gemini.fallbackModel] : [])];
   let lastError: unknown;
   for (const model of models) {
-    for (let attempt = 0; attempt < 3; attempt++) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), ATTEMPT_TIMEOUT_MS);
       try {
-        return await build(model);
+        return await build(model, ctl.signal);
       } catch (e) {
         lastError = e;
+        if (ctl.signal.aborted) {
+          console.warn(`[gemini] ${model} attempt ${attempt + 1}: no answer in ${ATTEMPT_TIMEOUT_MS / 1000}s, switching model`);
+          break;
+        }
         if (!RETRYABLE.has(statusOf(e))) throw e;
         console.warn(`[gemini] ${model} attempt ${attempt + 1}: ${statusOf(e)}, retrying`);
         await sleep(800 * (attempt + 1));
+      } finally {
+        clearTimeout(timer);
       }
     }
   }
@@ -58,7 +71,7 @@ function parseJsonArray(text: string): unknown {
 export async function analyzeFashionImage(base64Data: string, mimeType: string, region: string): Promise<AnalyzedItem[]> {
   const language = LANGUAGE_BY_REGION[region] || "Russian";
 
-  const response = await generateWithRetry((model) => ai.models.generateContent({
+  const response = await generateWithRetry((model, abortSignal) => ai.models.generateContent({
     model,
     contents: [
       {
@@ -90,6 +103,7 @@ export async function analyzeFashionImage(base64Data: string, mimeType: string, 
         },
       },
       systemInstruction: systemPrompt(language),
+      abortSignal,
     },
   }));
 
