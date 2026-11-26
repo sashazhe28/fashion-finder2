@@ -276,7 +276,7 @@ export default function App() {
           setError("Лимит бесплатных поисков с этой сети на сегодня исчерпан. Войдите в аккаунт, чтобы продолжить.");
         }
         setShowUpgradeModal(true);
-      } else if (e instanceof ApiError && (e.status === 400 || e.status === 429)) {
+      } else if (e instanceof ApiError && (e.status === 400 || e.status === 429 || e.status === 503)) {
         setError(e.message);
       } else {
         setError("Ошибка при анализе изображения. Пожалуйста, попробуйте позже.");

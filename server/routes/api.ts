@@ -5,7 +5,7 @@ import { config } from "../config";
 import { confirmPayment, getProvider, providerForRegion } from "../payments";
 import { PaymentError, PaymentMethod } from "../payments/types";
 import { getTariff } from "../pro/tariffs";
-import { analyzeFashionImage } from "../services/gemini";
+import { AiUnavailableError, analyzeFashionImage } from "../services/gemini";
 import { guestId, guestUsage, reserveSearch, userUsage } from "../services/usage";
 import { getUser, primaryEmail } from "../services/users";
 
@@ -173,6 +173,12 @@ export function apiRouter(): Router {
       });
     }
     if (err?.type === "entity.parse.failed") return res.status(400).json({ error: "bad_request", message: "Некорректный запрос" });
+    if (err instanceof AiUnavailableError) {
+      return res.status(503).json({
+        error: "ai_unavailable",
+        message: "Сервис распознавания сейчас перегружен. Попробуйте ещё раз через минуту.",
+      });
+    }
     res.status(status >= 400 && status < 600 ? status : 500).json({
       error: "server_error",
       message: status === 403 ? "Нет доступа" : "Ошибка сервера. Попробуйте позже.",

@@ -26,8 +26,11 @@ export const config = {
   gemini: {
     apiKey: str("GEMINI_API_KEY"),
     model: str("GEMINI_MODEL", "gemini-3-flash-preview"),
-    // Optional second model if the main one keeps answering 503/429 (e.g. a stable flash model)
-    fallbackModel: str("GEMINI_FALLBACK_MODEL"),
+    // Optional backup models, comma-separated, tried in order if the main one is overloaded or silent
+    fallbackModels: str("GEMINI_FALLBACK_MODEL")
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean),
     // Optional: custom API address (e.g. a gateway/proxy in a supported region). Empty = Google default
     baseUrl: str("GEMINI_BASE_URL"),
     // Cloudflare AI Gateway auth token (sent as cf-aig-authorization), if the gateway is authenticated
